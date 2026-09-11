@@ -4,9 +4,7 @@ Uso:
     python train.py t3      # estilometría + LightGBM (rápido, dataset completo)
     python train.py t1      # T1 zero-shot (Binoculars) sobre una muestra -- lento en CPU,
                              # pensado para correr en background; reanudable (guarda por lotes).
-
-T2 (DeBERTa-v3 afinado) se añade en un paso posterior -- necesita más tiempo de
-CPU todavía y merece su propio script de entrenamiento.
+    python train.py t2      # DeBERTa-v3-base afinado sobre Ott + corpus propio (GPU recomendada).
 """
 
 import json
@@ -16,18 +14,33 @@ from pathlib import Path
 import lightgbm as lgb
 import numpy as np
 import pandas as pd
+import torch
 from sklearn.metrics import roc_curve
 from sklearn.model_selection import train_test_split
+from torch.utils.data import DataLoader, Dataset
+from transformers import AutoModelForSequenceClassification, AutoTokenizer, get_linear_schedule_with_warmup
 
-from features_text import binoculars_score, stylometric_features
+from features_text import binoculars_score, get_device, stylometric_features
 
 BASE_DIR = Path(__file__).parent
 DATA_CSV = BASE_DIR / "reviews_baseline.csv"
+OWN_CORPUS_DIR = BASE_DIR / "own_corpus"
 OUTPUTS = BASE_DIR / "outputs"
 MODELS_DIR = OUTPUTS / "models"
 STYLO_CACHE = OUTPUTS / "stylometric_features.csv"
 BINOC_CACHE = OUTPUTS / "binoculars_sample_scores.csv"
 METRICS_JSON = OUTPUTS / "metrics.json"
+
+T2_MODEL_REPO = "microsoft/deberta-v3-base"
+# huggingface_hub se cuelga de forma reproducible en esta red (ver
+# own_corpus/_download_model_direct.py y CONTEXTO.md) -- si ya se descargo a
+# mano ahi, se carga desde local en vez de disparar otra descarga por red.
+_T2_LOCAL_MODEL_DIR = BASE_DIR / "_model_cache" / "deberta-v3-base"
+T2_MODEL_NAME = str(_T2_LOCAL_MODEL_DIR) if (_T2_LOCAL_MODEL_DIR / "pytorch_model.bin").exists() else T2_MODEL_REPO
+# gpt-4o(-mini) se reserva 100% como generador "nunca visto" -- ni entrena ni
+# calibra T2, solo se usa en evaluacion (ver CONTEXTO.md, seccion corpus propio).
+T2_HELD_OUT_GENERATOR_FILE = "openai_generated.csv"
+T2_TRAIN_GENERATOR_FILES = ["claude_generated.csv", "qwen_generated.csv"]
 
 STYLO_FEATURE_COLS = [
     "n_words",
@@ -196,11 +209,152 @@ def score_binoculars_sample(n_per_group: int = 300) -> None:
     print(json.dumps(metrics, indent=2))
 
 
+class _ReviewDataset(Dataset):
+    def __init__(self, encodings: dict, labels: torch.Tensor):
+        self.encodings = encodings
+        self.labels = labels
+
+    def __len__(self) -> int:
+        return len(self.labels)
+
+    def __getitem__(self, idx: int) -> dict:
+        item = {k: v[idx] for k, v in self.encodings.items()}
+        item["labels"] = self.labels[idx]
+        return item
+
+
+def _build_t2_datasets():
+    """Train/val (Ott + generadores de train del corpus propio) y dos sets
+    held-out que nunca entran en entrenamiento ni calibracion: el generador
+    "nunca visto" (T2_HELD_OUT_GENERATOR_FILE) y Salminen/GPT-2 completo
+    (generador viejo, dominio Amazon en vez de hoteles) -- ver README,
+    seccion T2, y CONTEXTO.md.
+    """
+    baseline = pd.read_csv(DATA_CSV)
+    ott = baseline[baseline["source_dataset"] == "ott_2013"]
+    salminen = baseline[baseline["source_dataset"] == "salminen_2022_gpt2"]
+
+    human = pd.DataFrame({"text": ott["text"], "label": 0})
+
+    ai_frames = []
+    for fname in T2_TRAIN_GENERATOR_FILES:
+        path = OWN_CORPUS_DIR / fname
+        if path.exists():
+            df = pd.read_csv(path)
+            ai_frames.append(pd.DataFrame({"text": df["text"], "label": 1}))
+    if not ai_frames:
+        raise RuntimeError(
+            f"Ningun generador de entrenamiento disponible en {OWN_CORPUS_DIR} "
+            f"(se esperaba alguno de {T2_TRAIN_GENERATOR_FILES})"
+        )
+    ai = pd.concat(ai_frames, ignore_index=True)
+
+    data = pd.concat([human, ai], ignore_index=True).dropna(subset=["text"])
+    train_df, val_df = train_test_split(
+        data, test_size=0.15, random_state=0, stratify=data["label"]
+    )
+
+    held_out_path = OWN_CORPUS_DIR / T2_HELD_OUT_GENERATOR_FILE
+    held_out_ai = pd.read_csv(held_out_path) if held_out_path.exists() else pd.DataFrame()
+    # Humano de referencia para el held-out: Salminen "OR" (humano real,
+    # dominio Amazon, distinto al Ott usado en train) -- no reutiliza humano
+    # ya visto en entrenamiento.
+    held_out_human = salminen[~salminen["is_fake"]]["text"]
+
+    return train_df, val_df, held_out_ai, held_out_human, salminen
+
+
+def train_t2_deberta(epochs: int = 3, batch_size: int = 16, lr: float = 2e-5) -> None:
+    device = get_device()
+    train_df, val_df, held_out_ai, held_out_human, salminen = _build_t2_datasets()
+
+    print(f"Train: {len(train_df)} {train_df['label'].value_counts().to_dict()}")
+    print(f"Val: {len(val_df)} {val_df['label'].value_counts().to_dict()}")
+    print(f"Held-out generador nunca visto ({T2_HELD_OUT_GENERATOR_FILE}): {len(held_out_ai)}")
+
+    tokenizer = AutoTokenizer.from_pretrained(T2_MODEL_NAME)
+    model = AutoModelForSequenceClassification.from_pretrained(T2_MODEL_NAME, num_labels=2).to(device)
+
+    def _encode(texts):
+        return tokenizer(list(texts), truncation=True, padding=True, max_length=256, return_tensors="pt")
+
+    train_ds = _ReviewDataset(_encode(train_df["text"]), torch.tensor(train_df["label"].values))
+    val_ds = _ReviewDataset(_encode(val_df["text"]), torch.tensor(val_df["label"].values))
+    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
+
+    optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
+    total_steps = len(train_loader) * epochs
+    scheduler = get_linear_schedule_with_warmup(
+        optimizer, num_warmup_steps=int(0.1 * total_steps), num_training_steps=total_steps
+    )
+
+    model.train()
+    for epoch in range(epochs):
+        total_loss = 0.0
+        for batch in train_loader:
+            batch = {k: v.to(device) for k, v in batch.items()}
+            optimizer.zero_grad()
+            out = model(**batch)
+            out.loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            optimizer.step()
+            scheduler.step()
+            total_loss += out.loss.item()
+        print(f"  epoch {epoch + 1}/{epochs} loss={total_loss / len(train_loader):.4f}")
+
+    model_dir = MODELS_DIR / "t2_deberta"
+    model_dir.mkdir(parents=True, exist_ok=True)
+    model.save_pretrained(model_dir)
+    tokenizer.save_pretrained(model_dir)
+
+    def _predict_scores(texts) -> np.ndarray:
+        model.eval()
+        scores = []
+        with torch.no_grad():
+            for i in range(0, len(texts), batch_size * 2):
+                chunk = list(texts[i:i + batch_size * 2])
+                enc = tokenizer(chunk, truncation=True, padding=True, max_length=256, return_tensors="pt").to(device)
+                probs = torch.softmax(model(**enc).logits, dim=-1)[:, 1]
+                scores.extend(probs.cpu().tolist())
+        model.train()
+        return np.array(scores)
+
+    val_scores = _predict_scores(val_df["text"].tolist())
+    val_y = val_df["label"].values
+    metrics = {
+        "t2_deberta": {
+            "n_train": len(train_df),
+            "n_val": len(val_df),
+            "tpr_at_1pct_fpr_val": _tpr_at_fpr(val_y, val_scores, 0.01),
+            "tpr_at_5pct_fpr_val": _tpr_at_fpr(val_y, val_scores, 0.05),
+        }
+    }
+
+    if len(held_out_ai) and len(held_out_human):
+        ho_texts = list(held_out_ai["text"]) + list(held_out_human)
+        ho_y = np.array([1] * len(held_out_ai) + [0] * len(held_out_human))
+        ho_scores = _predict_scores(ho_texts)
+        metrics["t2_deberta"]["n_held_out_generator"] = len(held_out_ai)
+        metrics["t2_deberta"]["tpr_at_1pct_fpr_held_out_generator"] = _tpr_at_fpr(ho_y, ho_scores, 0.01)
+        metrics["t2_deberta"]["tpr_at_5pct_fpr_held_out_generator"] = _tpr_at_fpr(ho_y, ho_scores, 0.05)
+
+    if len(salminen):
+        sal_scores = _predict_scores(salminen["text"].tolist())
+        sal_y = salminen["is_fake"].astype(int).values
+        metrics["t2_deberta"]["tpr_at_1pct_fpr_salminen_2022_gpt2"] = _tpr_at_fpr(sal_y, sal_scores, 0.01)
+        metrics["t2_deberta"]["tpr_at_5pct_fpr_salminen_2022_gpt2"] = _tpr_at_fpr(sal_y, sal_scores, 0.05)
+
+    _save_metrics(metrics)
+    print(json.dumps(metrics, indent=2))
+
+
 if __name__ == "__main__":
     step = sys.argv[1] if len(sys.argv) > 1 else "t3"
     if step == "t3":
         train_t3_baseline()
     elif step == "t1":
         score_binoculars_sample()
+    elif step == "t2":
+        train_t2_deberta()
     else:
-        print(f"Paso desconocido: {step} (usa 't3' o 't1')")
+        print(f"Paso desconocido: {step} (usa 't3', 't1' o 't2')")

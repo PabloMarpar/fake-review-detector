@@ -58,8 +58,9 @@ def download_file(repo_id: str, filename: str, dest_dir: Path) -> None:
 
 def main() -> None:
     repo_id, dest = sys.argv[1], Path(sys.argv[2])
+    files = sys.argv[3].split(",") if len(sys.argv) > 3 else FILES
     dest.mkdir(parents=True, exist_ok=True)
-    for filename in FILES:
+    for filename in files:
         for attempt in range(5):
             try:
                 download_file(repo_id, filename, dest)
