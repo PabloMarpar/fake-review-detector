@@ -4,9 +4,18 @@ API de OpenAI (gpt-4o-mini) -- tercera familia de LLM distinta a Claude
 usando un LLM moderno de verdad" ya que es la API que mas se menciona en
 los foros donde la gente comparte tecnicas para esto (ver CONTEXTO.md).
 Se uso gpt-4o-mini en vez de gpt-4o porque la cuenta nueva de OpenAI tiene
-un limite de solo 50 peticiones/dia a gpt-4o (se agoto en esta sesion);
-gpt-4o-mini tiene un limite diario mucho mas alto en cuentas nuevas y el
-coste es igualmente trivial para este volumen.
+un limite de solo 50 peticiones/dia a gpt-4o (se agoto en esta sesion) --
+pero gpt-4o-mini tiene EL MISMO limite (50 RPD) en esta cuenta, asi que el
+cambio de modelo no evita el problema, solo separa el contador.
+
+Importante, diagnosticado en sesion: no es un tope que "resetea" a una hora
+fija -- es una ventana movil de 24h (24h / 50 = 28m48s, exactamente el
+tiempo de espera que siempre devuelve el error). Cada peticion usada libera
+su hueco 24h despues de haberse hecho, una a una -- no se puede "esperar al
+reset" y lanzar 50 de golpe, solo llegan goteando cada ~29 min. Por eso este
+script, al toparse con el limite, se queda esperando el tiempo exacto que
+indica el error y reintenta solo -- pensado para dejarlo corriendo todo el
+dia sin relanzarlo a mano.
 
 Tres prompt_style, en orden de sofisticacion creciente -- basados en
 tecnicas reales encontradas en hilos de BlackHatWorld sobre como la gente
@@ -35,11 +44,13 @@ Uso:
 
 import os
 import random
+import re
+import time
 from pathlib import Path
 
 import pandas as pd
 from dotenv import load_dotenv
-from openai import OpenAI
+from openai import OpenAI, RateLimitError
 
 BASE_DIR = Path(__file__).parent.parent
 load_dotenv(BASE_DIR / ".env")
@@ -104,6 +115,35 @@ def _load_reference_reviews() -> list[str]:
     return real.sample(n=min(200, len(real)), random_state=0).tolist()
 
 
+_WAIT_RE = re.compile(r"try again in (?:(\d+)m)?(\d+(?:\.\d+)?)s")
+
+
+def _create_with_rate_limit_wait(client: OpenAI, prompt: str):
+    """Reintenta indefinidamente ante RateLimitError, esperando exactamente
+    el tiempo que indica el mensaje de error (mas 5s de margen) -- el limite
+    de esta cuenta es una ventana movil de 24h (ver docstring del modulo),
+    asi que la unica forma de sacar mas peticiones es esperar a que un hueco
+    se libere, no relanzar el proceso.
+    """
+    while True:
+        try:
+            return client.chat.completions.create(
+                model=MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=150,
+                temperature=0.9,
+            )
+        except RateLimitError as e:
+            match = _WAIT_RE.search(str(e))
+            if match:
+                minutes, seconds = match.groups()
+                wait_s = (int(minutes) * 60 if minutes else 0) + float(seconds) + 5
+            else:
+                wait_s = 29 * 60  # fallback: ventana observada de ~28m48s
+            print(f"  rate limit -- esperando {wait_s:.0f}s antes de reintentar")
+            time.sleep(wait_s)
+
+
 def main() -> None:
     client = OpenAI()  # lee OPENAI_API_KEY del entorno (cargado via .env)
     references = _load_reference_reviews()
@@ -136,12 +176,7 @@ def main() -> None:
                 reference = random.choice(references)
                 prompt = FEWSHOT_PROMPT.format(reference=reference, rating=rating, business=business)
 
-            resp = client.chat.completions.create(
-                model=MODEL,
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=150,
-                temperature=0.9,
-            )
+            resp = _create_with_rate_limit_wait(client, prompt)
             text = resp.choices[0].message.content.strip().strip('"')
             cost = (
                 resp.usage.prompt_tokens * PRICE_IN_PER_TOK

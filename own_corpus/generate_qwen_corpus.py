@@ -102,19 +102,23 @@ def _load_model():
 def _generate(tokenizer, model, device, prompt: str, seed: int) -> str:
     torch.manual_seed(seed)
     messages = [{"role": "user", "content": prompt}]
+    # return_dict=True -- en esta version de transformers, apply_chat_template
+    # sin return_dict devuelve un objeto que no expone .shape de forma fiable
+    # (rompia model.generate). Con return_dict=True obtenemos un BatchEncoding
+    # normal (input_ids + attention_mask), que se desempaqueta con **inputs.
     inputs = tokenizer.apply_chat_template(
-        messages, add_generation_prompt=True, return_tensors="pt"
+        messages, add_generation_prompt=True, return_tensors="pt", return_dict=True
     ).to(device)
     with torch.no_grad():
         output = model.generate(
-            inputs,
+            **inputs,
             max_new_tokens=120,
             do_sample=True,
             temperature=0.9,
             top_p=0.95,
             pad_token_id=tokenizer.eos_token_id,
         )
-    text = tokenizer.decode(output[0, inputs.shape[1]:], skip_special_tokens=True)
+    text = tokenizer.decode(output[0, inputs["input_ids"].shape[1]:], skip_special_tokens=True)
     return text.strip().strip('"')
 
 
