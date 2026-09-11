@@ -9,3 +9,4 @@ data_raw/
 own_corpus/_qwen_model/
 _model_cache/
 outputs/*.log
+outputs/models/t2_deberta/

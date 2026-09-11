@@ -85,10 +85,33 @@ postura legal/ética y roadmap completos en `README.md`.
     exacto del error), pensado para dejarlo corriendo sin relanzarlo a mano.
   - `T2_HELD_OUT_GENERATOR_FILE` en `train.py` reserva OpenAI al 100% como "generador nunca
     visto" — ni entrena ni calibra nada, solo evaluación.
-- ✅ **T2 (DeBERTa-v3-base) — pipeline escrito** (`python train.py t2`), todavía no
-  ejecutado con el corpus completo. Entrena con Ott (ambas clases) + Claude + Qwen; evalúa en
-  val propio, en el generador held-out (OpenAI) y en Salminen/GPT-2 completo (generador viejo,
-  dominio distinto) — dos chequeos de generalización independientes, no uno.
+- ✅ **T2 (DeBERTa-v3-base) — entrenado, y es la mejor noticia de la sesión.** Entrena con
+  Ott (ambas clases) + Claude + Qwen; evalúa en val propio, en el generador held-out (OpenAI,
+  nunca visto) y en Salminen/GPT-2 completo (generador viejo, dominio distinto).
+
+  | Evaluación | TPR@1%FPR | TPR@5%FPR |
+  |---|---|---|
+  | Val (misma distribución de train) | 0.99 | 1.00 |
+  | **Held-out — OpenAI, nunca visto** | **0.17** | **0.50** |
+  | Salminen/GPT-2 (generador viejo, dominio Amazon) | 0.002 | 0.02 |
+
+  **T2 sí generaliza entre LLMs modernos que nunca ha visto** (entrenado con Claude+Qwen,
+  detecta la mitad de las reviews de OpenAI a 5%FPR — muy por encima del 0.02-0.17 que sacaban
+  T1/T3 contra ese mismo generador) **pero no generaliza a GPT-2** (2019, generador mucho más
+  débil, con "firma" de IA distinta) **ni al dominio Amazon** (solo vio hoteles de Ott en
+  train). Conclusión honesta de la Fase 0: la detección de texto de IA en reviews
+  generaliza entre generadores modernos, no de forma universal a cualquier generador o
+  dominio — hay que decir esto explícitamente en el README/S1, no simplificarlo a "funciona"
+  o "no funciona".
+  - **Bug real encontrado y corregido**: el checkpoint de `deberta-v3-base` descargado está en
+    fp16, y `AutoModelForSequenceClassification.from_pretrained` preserva ese dtype por
+    defecto — DeBERTa-v2/v3 es conocido por dar NaN en entrenamiento con fp16 (issue
+    documentado del propio modelo, atención "disentangled" desborda). El loss se iba a NaN en
+    la primera época hasta forzar `dtype=torch.float32` explícito al cargar. Cualquier
+    entrenamiento futuro de un modelo DeBERTa en este repo necesita ese mismo cuidado.
+  - Modelo guardado en `outputs/models/t2_deberta/` (737MB, **no está en git** —
+    supera el límite de GitHub de 100MB/fichero. `.gitignore` lo excluye; se reproduce
+    corriendo `python train.py t2` de nuevo, no hace falta commitearlo).
 - 🔴 **Hallazgo crítico de sesión — T1 y T3 evaluados contra el corpus propio
   (`python train.py eval_own_corpus`)**: **fallan casi por completo contra LLMs modernos.**
 
