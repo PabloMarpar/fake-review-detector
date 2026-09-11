@@ -112,6 +112,22 @@ postura legal/ética y roadmap completos en `README.md`.
   - Modelo guardado en `outputs/models/t2_deberta/` (737MB, **no está en git** —
     supera el límite de GitHub de 100MB/fichero. `.gitignore` lo excluye; se reproduce
     corriendo `python train.py t2` de nuevo, no hace falta commitearlo).
+- ✅ **Fusión T1+T2+T3 probada (`python train.py fusion`) — y descartada.** Regresión
+  logística simple sobre las tres señales, mismo protocolo de held-out que T2. Resultado
+  contraintuitivo pero real: **la fusión generaliza peor que T2 solo**, no mejor.
+
+  | | T2 solo | Fusión T1+T2+T3 |
+  |---|---|---|
+  | Held-out (OpenAI) TPR@5%FPR | 0.37 | 0.017 |
+  | Held-out (OpenAI) TPR@1%FPR | 0.15 | 0.0 |
+
+  Los coeficientes de la regresión (T1: -0.59, T3: -1.03, T2: +8.7) muestran por qué: T1/T3
+  no aportan señal real contra LLMs modernos (ver hallazgo de abajo), pero sí tienen
+  correlaciones espurias dentro de la distribución de entrenamiento (Ott+Claude+Qwen) que la
+  regresión aprende y que no se sostienen frente a un generador nuevo — al fusionar,
+  contaminan la única señal que sí generaliza. **Decisión para el resto del proyecto: usar T2
+  solo como señal de texto de Fase 0, no una fusión de las tres** — fusionar por rutina sin
+  medir habría dado peor resultado y una falsa sensación de "más señales = mejor".
 - 🔴 **Hallazgo crítico de sesión — T1 y T3 evaluados contra el corpus propio
   (`python train.py eval_own_corpus`)**: **fallan casi por completo contra LLMs modernos.**
 

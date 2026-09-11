@@ -413,6 +413,85 @@ def evaluate_own_corpus() -> None:
     print(json.dumps(metrics, indent=2))
 
 
+def _load_t2_model():
+    model_dir = MODELS_DIR / "t2_deberta"
+    tokenizer = AutoTokenizer.from_pretrained(str(model_dir))
+    device = get_device()
+    model = AutoModelForSequenceClassification.from_pretrained(str(model_dir), dtype=torch.float32).to(device)
+    model.eval()
+    return tokenizer, model, device
+
+
+def _t2_scores(tokenizer, model, device, texts, batch_size: int = 32) -> np.ndarray:
+    scores = []
+    with torch.no_grad():
+        for i in range(0, len(texts), batch_size):
+            chunk = list(texts[i:i + batch_size])
+            enc = tokenizer(chunk, truncation=True, padding=True, max_length=256, return_tensors="pt").to(device)
+            probs = torch.softmax(model(**enc).logits, dim=-1)[:, 1]
+            scores.extend(probs.cpu().tolist())
+    return np.array(scores)
+
+
+def fuse_signals() -> None:
+    """Combina T1 (Binoculars) + T3 (estilometria) + T2 (DeBERTa) con una
+    regresion logistica simple. Expectativa honesta antes de medir: como T1
+    y T3 salieron casi al nivel del azar contra LLMs modernos en
+    `eval_own_corpus`, es probable que aporten poco o nada sobre T2 solo --
+    pero eso hay que comprobarlo, no asumirlo (por eso se guardan tambien
+    las metricas de T2-solo en las mismas poblaciones, para comparar
+    manzanas con manzanas).
+    """
+    from sklearn.linear_model import LogisticRegression
+
+    train_df, val_df, held_out_ai, held_out_human, _salminen = _build_t2_datasets()
+    t3_model = lgb.Booster(model_file=str(MODELS_DIR / "t3_lightgbm.txt"))
+    tokenizer, t2_model, device = _load_t2_model()
+
+    def _score_all(texts) -> np.ndarray:
+        texts = [str(t) for t in texts]
+        t1 = np.array([-binoculars_score(t) for t in texts])
+        feats = pd.DataFrame([stylometric_features(t) for t in texts])[STYLO_FEATURE_COLS]
+        t3 = t3_model.predict(feats)
+        t2 = _t2_scores(tokenizer, t2_model, device, texts)
+        return np.column_stack([t1, t3, t2])
+
+    print(f"Calculando T1+T3+T2 para train ({len(train_df)})...")
+    X_train, y_train = _score_all(train_df["text"]), train_df["label"].values
+    print(f"Calculando T1+T3+T2 para val ({len(val_df)})...")
+    X_val, y_val = _score_all(val_df["text"]), val_df["label"].values
+
+    fusion = LogisticRegression(max_iter=1000)
+    fusion.fit(X_train, y_train)
+    val_fused = fusion.predict_proba(X_val)[:, 1]
+
+    metrics = {
+        "fusion_t1_t2_t3": {
+            "coef_t1_t3_t2": fusion.coef_[0].tolist(),
+            "tpr_at_1pct_fpr_val": _tpr_at_fpr(y_val, val_fused, 0.01),
+            "tpr_at_5pct_fpr_val": _tpr_at_fpr(y_val, val_fused, 0.05),
+            "tpr_at_1pct_fpr_val_t2_only": _tpr_at_fpr(y_val, X_val[:, 2], 0.01),
+            "tpr_at_5pct_fpr_val_t2_only": _tpr_at_fpr(y_val, X_val[:, 2], 0.05),
+        }
+    }
+
+    if len(held_out_ai) and len(held_out_human):
+        ho_human_sample = held_out_human.sample(n=min(300, len(held_out_human)), random_state=0)
+        print(f"Calculando T1+T3+T2 para held-out ({len(held_out_ai)} IA + {len(ho_human_sample)} humano)...")
+        ho_texts = list(held_out_ai["text"]) + list(ho_human_sample)
+        ho_y = np.array([1] * len(held_out_ai) + [0] * len(ho_human_sample))
+        X_ho = _score_all(ho_texts)
+        ho_fused = fusion.predict_proba(X_ho)[:, 1]
+        metrics["fusion_t1_t2_t3"]["n_held_out_generator"] = len(held_out_ai)
+        metrics["fusion_t1_t2_t3"]["tpr_at_1pct_fpr_held_out_generator"] = _tpr_at_fpr(ho_y, ho_fused, 0.01)
+        metrics["fusion_t1_t2_t3"]["tpr_at_5pct_fpr_held_out_generator"] = _tpr_at_fpr(ho_y, ho_fused, 0.05)
+        metrics["fusion_t1_t2_t3"]["tpr_at_1pct_fpr_held_out_generator_t2_only"] = _tpr_at_fpr(ho_y, X_ho[:, 2], 0.01)
+        metrics["fusion_t1_t2_t3"]["tpr_at_5pct_fpr_held_out_generator_t2_only"] = _tpr_at_fpr(ho_y, X_ho[:, 2], 0.05)
+
+    _save_metrics(metrics)
+    print(json.dumps(metrics, indent=2))
+
+
 if __name__ == "__main__":
     step = sys.argv[1] if len(sys.argv) > 1 else "t3"
     if step == "t3":
@@ -423,5 +502,7 @@ if __name__ == "__main__":
         train_t2_deberta()
     elif step == "eval_own_corpus":
         evaluate_own_corpus()
+    elif step == "fusion":
+        fuse_signals()
     else:
-        print(f"Paso desconocido: {step} (usa 't3', 't1', 't2' o 'eval_own_corpus')")
+        print(f"Paso desconocido: {step} (usa 't3', 't1', 't2', 'eval_own_corpus' o 'fusion')")

@@ -49,5 +49,21 @@
     "tpr_at_5pct_fpr_held_out_generator": 0.5,
     "tpr_at_1pct_fpr_salminen_2022_gpt2": 0.0023768259470165884,
     "tpr_at_5pct_fpr_salminen_2022_gpt2": 0.019707848477345878
+  },
+  "fusion_t1_t2_t3": {
+    "coef_t1_t3_t2": [
+      -0.5852889532563165,
+      -1.030875428717398,
+      8.714718695905168
+    ],
+    "tpr_at_1pct_fpr_val": 0.9888888888888889,
+    "tpr_at_5pct_fpr_val": 0.9888888888888889,
+    "tpr_at_1pct_fpr_val_t2_only": 0.9888888888888889,
+    "tpr_at_5pct_fpr_val_t2_only": 1.0,
+    "n_held_out_generator": 60,
+    "tpr_at_1pct_fpr_held_out_generator": 0.0,
+    "tpr_at_5pct_fpr_held_out_generator": 0.016666666666666666,
+    "tpr_at_1pct_fpr_held_out_generator_t2_only": 0.15,
+    "tpr_at_5pct_fpr_held_out_generator_t2_only": 0.36666666666666664
   }
 }
