@@ -348,6 +348,65 @@ def train_t2_deberta(epochs: int = 3, batch_size: int = 16, lr: float = 2e-5) ->
     print(json.dumps(metrics, indent=2))
 
 
+OWN_CORPUS_FILES = {
+    "claude_generated.csv": "claude-sonnet-5",
+    "qwen_generated.csv": "qwen2.5-1.5b-instruct",
+    "openai_generated.csv": "gpt-4o / gpt-4o-mini",
+}
+
+
+def evaluate_own_corpus() -> None:
+    """Mide T1 y T3 (ya entrenados contra Ott/GPT-2) frente al corpus propio
+    con LLMs modernos de verdad -- hasta ahora nunca se habian evaluado
+    contra nada mas reciente que GPT-2 (2019). Reutiliza como referencia
+    humana lo ya cacheado para Ott truthful (mismo dataset que T1/T3 ya
+    conocen) en vez de recalcular: 300 reviews con score T1 ya calculado
+    (`binoculars_sample_scores.csv`) y las features T3 de todo Ott
+    (`stylometric_features.csv`, alineado por orden de fila con
+    `reviews_baseline.csv`).
+    """
+    baseline = pd.read_csv(DATA_CSV)
+    stylo_all = pd.read_csv(STYLO_CACHE)
+    ott_truthful_mask = (baseline["source_dataset"] == "ott_2013") & (~baseline["is_fake"])
+    ott_t3_human = stylo_all[ott_truthful_mask.values][STYLO_FEATURE_COLS]
+
+    binoc_cache = pd.read_csv(BINOC_CACHE)
+    ott_t1_human = binoc_cache[
+        (binoc_cache["source_dataset"] == "ott_2013") & (~binoc_cache["is_fake"])
+    ]["binoculars_score"]
+
+    t3_model = lgb.Booster(model_file=str(MODELS_DIR / "t3_lightgbm.txt"))
+
+    metrics = {"t1_own_corpus": {}, "t3_own_corpus": {}}
+    for fname, generator_label in OWN_CORPUS_FILES.items():
+        path = OWN_CORPUS_DIR / fname
+        if not path.exists():
+            continue
+        df = pd.read_csv(path)
+        print(f"Evaluando {fname} ({len(df)} reviews, generador: {generator_label})...")
+
+        # T1
+        t1_ai_scores = -pd.Series([binoculars_score(str(t)) for t in df["text"]])
+        t1_y = np.array([1] * len(t1_ai_scores) + [0] * len(ott_t1_human))
+        t1_scores = pd.concat([t1_ai_scores, -ott_t1_human], ignore_index=True)
+        key = fname.replace("_generated.csv", "")
+        metrics["t1_own_corpus"][f"n_{key}"] = len(df)
+        metrics["t1_own_corpus"][f"tpr_at_1pct_fpr_{key}"] = _tpr_at_fpr(t1_y, t1_scores, 0.01)
+        metrics["t1_own_corpus"][f"tpr_at_5pct_fpr_{key}"] = _tpr_at_fpr(t1_y, t1_scores, 0.05)
+
+        # T3
+        ai_feats = pd.DataFrame([stylometric_features(str(t)) for t in df["text"]])[STYLO_FEATURE_COLS]
+        t3_X = pd.concat([ai_feats, ott_t3_human], ignore_index=True)
+        t3_scores = t3_model.predict(t3_X)
+        t3_y = np.array([1] * len(ai_feats) + [0] * len(ott_t3_human))
+        metrics["t3_own_corpus"][f"n_{key}"] = len(df)
+        metrics["t3_own_corpus"][f"tpr_at_1pct_fpr_{key}"] = _tpr_at_fpr(t3_y, t3_scores, 0.01)
+        metrics["t3_own_corpus"][f"tpr_at_5pct_fpr_{key}"] = _tpr_at_fpr(t3_y, t3_scores, 0.05)
+
+    _save_metrics(metrics)
+    print(json.dumps(metrics, indent=2))
+
+
 if __name__ == "__main__":
     step = sys.argv[1] if len(sys.argv) > 1 else "t3"
     if step == "t3":
@@ -356,5 +415,7 @@ if __name__ == "__main__":
         score_binoculars_sample()
     elif step == "t2":
         train_t2_deberta()
+    elif step == "eval_own_corpus":
+        evaluate_own_corpus()
     else:
-        print(f"Paso desconocido: {step} (usa 't3', 't1' o 't2')")
+        print(f"Paso desconocido: {step} (usa 't3', 't1', 't2' o 'eval_own_corpus')")

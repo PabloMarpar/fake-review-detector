@@ -2,10 +2,10 @@
   "t3_stylometry": {
     "n_train": 33604,
     "n_test": 8402,
-    "tpr_at_1pct_fpr": 0.4493927125506073,
-    "tpr_at_5pct_fpr": 0.6673017385091689,
-    "auc": 0.7307487040345124,
-    "tpr_at_5pct_fpr_salminen_2022_gpt2": 0.6843278039118593,
+    "tpr_at_1pct_fpr": 0.4443915217909026,
+    "tpr_at_5pct_fpr": 0.6670635865682305,
+    "auc": 0.7304047159977775,
+    "tpr_at_5pct_fpr_salminen_2022_gpt2": 0.6890319385986631,
     "tpr_at_5pct_fpr_ott_2013": 0.075
   },
   "t1_binoculars": {
