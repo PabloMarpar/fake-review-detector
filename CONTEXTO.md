@@ -26,13 +26,20 @@ postura legal/ética y roadmap completos en `README.md`.
   SmolLM2-360M/Instruct) y T3 (estilometría con spaCy + textstat). Probado en una muestra de
   4 reviews: **funciona y la dirección del score T1 es la esperada** (reviews humanas
   puntúan alto, GPT-2 puntúa bajo).
-- 🔄 `train.py` — en ejecución en segundo plano cuando se escribió este documento:
-  - `python train.py t3`: entrena LightGBM sobre estilometría en las 42k reviews completas
-    (rápido, sin red neuronal).
-  - `python train.py t1`: pendiente de lanzar tras t3 — Binoculars sobre una muestra
-    estratificada (300 por grupo dataset×label), porque en CPU cada review tarda ~2-12s
-    (no es viable a las 42k reviews completas sin GPU). Guarda resultados incrementalmente
-    en `outputs/binoculars_sample_scores.csv` (reanudable si se interrumpe).
+- ✅ `python train.py t3` — completado. Resultado real (42.006 reviews, split 80/20):
+  - TPR@5%FPR global: 0.667, TPR@1%FPR: 0.449, AUC≈0.73.
+  - **Desglosado por dataset, la cosa cambia mucho**: TPR@5%FPR = 0.684 en Salminen/GPT-2,
+    pero solo **0.075 en Ott** (casi al nivel del azar). Hallazgo honesto esperado: la
+    estilometría (superlativos, longitud de frase, etc.) distingue bien humano-vs-GPT-2,
+    pero casi nada humano-real-vs-humano-intentando-mentir (Ott son ambas clases escritas
+    por personas). Confirma lo que ya decía el README: T3 no es la señal fuerte, es para
+    explicabilidad.
+  - Modelo guardado en `outputs/models/t3_lightgbm.txt`, métricas en `outputs/metrics.json`,
+    features cacheadas en `outputs/stylometric_features.csv`.
+- 🔄 `python train.py t1` — pendiente de lanzar (Binoculars sobre muestra estratificada,
+  300 por grupo dataset×label). En CPU cada review tarda ~2-12s, no viable a las 42k
+  completas sin GPU. Guarda progreso incrementalmente en
+  `outputs/binoculars_sample_scores.csv` (reanudable si se interrumpe).
 - ⏳ T2 (DeBERTa-v3 afinado) — todavía no empezado. Pendiente de decidir tamaño del modelo
   (small vs. xsmall) según cuánto tarde el entrenamiento en esta máquina (CPU only, sin
   GPU — ver "Entorno técnico").
@@ -78,6 +85,17 @@ entrenamiento/evaluación local.
   `portfolio-projects/` (`data.py` → `train.py` → `predict.py` → `app.py`, plano, sin
   paquete `src/`) — NO la de `Book_BBDD` (que es un pipeline ETL con estructura de paquete,
   un tipo de proyecto distinto).
+
+## Equipo de agentes de este proyecto
+
+En `.claude/agents/` hay dos niveles, pensados para escalar con el proyecto:
+
+- **`fake-review-detector`**: agente único, es el que se usa activamente ahora mismo para el
+  día a día.
+- **`agente-maestro` + `agente-datos` + `agente-codigo` + `agente-web`**: equipo
+  especializado por dominio (datos, detección/ML, producto/web), listo para cuando el
+  proyecto tenga suficiente superficie en marcha a la vez como para que repartir compense.
+  Todos responden en español y leen este `CONTEXTO.md` al arrancar.
 
 ## Próximos pasos inmediatos (en orden)
 
