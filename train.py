@@ -273,7 +273,13 @@ def train_t2_deberta(epochs: int = 3, batch_size: int = 16, lr: float = 2e-5) ->
     print(f"Held-out generador nunca visto ({T2_HELD_OUT_GENERATOR_FILE}): {len(held_out_ai)}")
 
     tokenizer = AutoTokenizer.from_pretrained(T2_MODEL_NAME)
-    model = AutoModelForSequenceClassification.from_pretrained(T2_MODEL_NAME, num_labels=2).to(device)
+    # dtype=float32 explicito: el checkpoint de deberta-v3-base esta en fp16, y
+    # DeBERTa-v2/v3 es conocido por producir NaN en entrenamiento con fp16
+    # (issue documentado del propio modelo) -- confirmado en esta sesion, loss
+    # se iba a NaN en la primera epoca hasta forzar fp32.
+    model = AutoModelForSequenceClassification.from_pretrained(
+        T2_MODEL_NAME, num_labels=2, dtype=torch.float32
+    ).to(device)
 
     def _encode(texts):
         return tokenizer(list(texts), truncation=True, padding=True, max_length=256, return_tensors="pt")
