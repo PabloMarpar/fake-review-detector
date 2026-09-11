@@ -97,6 +97,27 @@ En `.claude/agents/` hay dos niveles, pensados para escalar con el proyecto:
   proyecto tenga suficiente superficie en marcha a la vez como para que repartir compense.
   Todos responden en español y leen este `CONTEXTO.md` al arrancar.
 
+## Ordenador de casa (RTX 4060 Ti) — pendiente de usar
+
+El usuario tiene en casa una GPU RTX 4060 Ti (8 o 16GB, de sobra para los modelos de este
+proyecto — SmolLM2-360M para T1, DeBERTa-v3-small/base para T2). Lo que en la máquina de
+trabajo (CPU-only) tarda horas, ahí serían minutos. Para usarla:
+
+1. `git clone`/`git pull` este repo en la máquina de casa.
+2. Crear/usar un venv allí e instalar dependencias, pero **`torch` con la build CUDA**, no la
+   CPU-only que tenemos aquí: `pip install torch --index-url https://download.pytorch.org/whl/cu121`
+   (o el índice `cuXXX` que corresponda al driver de NVIDIA instalado) en vez del `torch` a
+   secas de `requirements.txt`.
+3. Para trabajar desde el ordenador del trabajo mientras el cómputo corre en casa: Claude
+   Code **Remote Control** — se arranca `claude` + `/remote-control` (o `claude
+   --remote-control`) en la carpeta del proyecto en la máquina de casa, y desde el navegador
+   del trabajo (claude.ai/code) o el móvil se conecta a esa sesión por su URL. La ejecución
+   se queda en casa; el navegador es solo la ventana. Requiere que la máquina de casa esté
+   encendida y con la sesión ya arrancada (hace falta algún acceso remoto previo -- RDP,
+   TeamViewer, etc. -- si no se deja ya corriendo antes de salir de casa).
+
+No se ha hecho nada de esto todavía — queda documentado para cuando el usuario esté en casa.
+
 ## Próximos pasos inmediatos (en orden)
 
 1. Ver resultado de `train.py t3` (LightGBM + estilometría, dataset completo).
