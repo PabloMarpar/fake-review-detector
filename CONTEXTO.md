@@ -36,10 +36,13 @@ postura legal/ética y roadmap completos en `README.md`.
     explicabilidad.
   - Modelo guardado en `outputs/models/t3_lightgbm.txt`, métricas en `outputs/metrics.json`,
     features cacheadas en `outputs/stylometric_features.csv`.
-- 🔄 `python train.py t1` — en progreso (Binoculars sobre muestra estratificada, 300 por
-  grupo dataset×label, 1.200 reviews en total). En CPU cada review tarda ~2-12s, no viable a
-  las 42k completas sin GPU (candidato claro para cuando se use la GPU de casa). Real: **260
-  únicas ya calculadas** a las 14:35 del 2026-09-11.
+- ⏸️ `python train.py t1` — **parado manualmente** (el usuario se iba a su ordenador
+  personal). Progreso real cuando se paró: **380 de 1.200** reviews únicas calculadas
+  (checkpoint íntegro en `outputs/binoculars_sample_scores.csv`, ya deduplicado). Para
+  continuar: `python train.py t1` reanuda solo desde ahí, no recalcula lo ya hecho. Buen
+  candidato para lanzarlo en el ordenador de casa con la GPU en vez de aquí (ver sección
+  "Ordenador de casa" más abajo) — en CPU cada review tarda ~2-12s, no viable a las 42k
+  completas sin GPU.
   - **Bug real encontrado y corregido**: el checkpointing incremental no vaciaba el
     acumulador `results` tras cada guardado, así que cada guardado re-concatenaba TODO lo
     acumulado con TODO el CSV ya guardado — a las ~1100 iteraciones el fichero tenía 1.820
