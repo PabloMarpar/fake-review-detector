@@ -148,8 +148,17 @@ def score_binoculars_sample(n_per_group: int = 300) -> None:
         results.append({"text": row["text"], "is_fake": row["is_fake"],
                          "source_dataset": row["source_dataset"], "binoculars_score": score})
         if (i + 1) % 20 == 0:
-            pd.concat([pd.DataFrame(results), pd.read_csv(BINOC_CACHE) if BINOC_CACHE.exists() else pd.DataFrame()]) \
-                .to_csv(BINOC_CACHE, index=False)
+            # Bug encontrado (2026-09-11): `results` no se vaciaba aqui, asi que
+            # cada guardado volvia a concatenar TODO lo acumulado en memoria con
+            # TODO el fichero ya guardado -> duplicados crecientes (a las ~1100
+            # iteraciones el CSV tenia 1820 filas para solo 260 reviews unicas).
+            # drop_duplicates() de mas abajo lo disimulaba al final, pero de
+            # camino cada guardado reescribia un CSV cada vez mas grande sin
+            # necesidad. Fix: vaciar `results` tras cada guardado.
+            new_batch = pd.DataFrame(results)
+            results = []
+            existing = pd.read_csv(BINOC_CACHE) if BINOC_CACHE.exists() else pd.DataFrame()
+            pd.concat([existing, new_batch]).drop_duplicates(subset="text").to_csv(BINOC_CACHE, index=False)
             print(f"  {i + 1}/{len(pending)} guardado")
 
     all_results = pd.concat(
