@@ -128,6 +128,54 @@ postura legal/ética y roadmap completos en `README.md`.
   contaminan la única señal que sí generaliza. **Decisión para el resto del proyecto: usar T2
   solo como señal de texto de Fase 0, no una fusión de las tres** — fusionar por rutina sin
   medir habría dado peor resultado y una falsa sensación de "más señales = mejor".
+
+## Sesión nocturna de mejora de T2 (2026-09-11 noche → 2026-09-12), en marcha
+
+El 0.50 TPR@5%FPR de T2 en el held-out es bueno pero mejorable. Plan acordado con el usuario
+antes de irse a dormir, dejándome trabajando de forma autónoma:
+
+1. **Más "voces" de IA en train**: añadir Qwen3-8B (generación actual, no Qwen2.5) como
+   tercer generador de entrenamiento, además de Claude+Qwen2.5-1.5B ya existentes.
+2. **Segundo held-out**: DeepSeek-R1-Distill-Llama-8B (destilado de DeepSeek-R1, familia
+   distinta a todo lo demás), reservado al 100%, para no depender solo del goteo lento de
+   OpenAI (ventana móvil 24h/50 ≈ 1 petición nueva cada 29 min — a este ritmo, de 60 a 70 en
+   ~7h de la noche del 11 al 12).
+3. **Modelo más grande**: `deberta-v3-large` en vez de `base`, con `weight_decay`.
+4. **Técnica "innovadora"**: cabeza adversarial de "qué generador es" con Gradient Reversal
+   Layer, inspirada en el paper real ACL 2026 "Breaking the Generator Barrier: Disentangled
+   Representation for Generalizable AI-Text Detection" (arXiv 2604.13692) — el paper reporta
+   que fuerza al encoder a dejar de usar tics de un generador concreto y aprender "IA-nidad"
+   genérica. Implementación simplificada en `train_t2_v2.py` (una sola cabeza auxiliar +
+   GRL, no la versión completa del paper con doble cuello de botella + cross-view).
+
+**Ambos modelos nuevos verificados por búsqueda web antes de usarlos** (mi conocimiento tiene
+corte en enero 2026 y esto se mueve rápido) — `Qwen/Qwen3-8B` y
+`deepseek-ai/DeepSeek-R1-Distill-Llama-8B`, ambos repos reales confirmados en HuggingFace.
+Descargados con `own_corpus/_download_model_direct.py` (el mismo bypass de
+`huggingface_hub` que ya nos hizo falta para Qwen2.5 y deberta-v3-base — sigue haciendo
+falta, `snapshot_download` se sigue colgando en esta red).
+
+**`own_corpus/generate_local_corpus.py`** generaliza el generador de Qwen a cualquier modelo
+local, y añade dos estilos de prompt nuevos sobre naive/adversarial: `persona` (persona de
+cliente detallada) y `translate` (pide la review en otro idioma y que la traduzca — imita a
+un no-nativo real). Longitud mucho más variable (10-150 palabras) en vez de rangos fijos.
+
+**Primer resultado de la cabeza adversarial — honesto, no es lo esperado todavía**: prueba de
+humo en `deberta-v3-base` con los datos ya existentes (solo Claude+Qwen2.5, sin Qwen3 aún)
+sale **peor** que el T2 baseline, no mejor:
+
+| | T2 baseline (plano) | T2 + adversarial (solo 2 generadores) |
+|---|---|---|
+| Held-out OpenAI TPR@5%FPR | 0.50 | **0.043** |
+| Held-out OpenAI TPR@1%FPR | 0.17 | **0.0** |
+
+No se descarta la técnica todavía: el propio paper dice explícitamente que su ventaja "crece
+con la diversidad de generadores de entrenamiento" — con solo 2 generadores estamos en el
+peor escenario posible para este método (la cabeza adversarial de 3 clases -humano/claude/
+qwen2.5- es demasiado fácil de despistar sin aprender nada útil, o puede estar tirando señal
+real junto con los tics). Hipótesis a comprobar en cuanto Qwen3-8B esté listo: con 3
+generadores de IA en train, ¿mejora sobre el 0.50, o se descarta también esta técnica como se
+descartó la fusión? Se documentará el resultado sea cual sea, no solo si sale bien.
 - 🔴 **Hallazgo crítico de sesión — T1 y T3 evaluados contra el corpus propio
   (`python train.py eval_own_corpus`)**: **fallan casi por completo contra LLMs modernos.**
 

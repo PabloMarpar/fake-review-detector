@@ -65,5 +65,21 @@
     "tpr_at_5pct_fpr_held_out_generator": 0.016666666666666666,
     "tpr_at_1pct_fpr_held_out_generator_t2_only": 0.15,
     "tpr_at_5pct_fpr_held_out_generator_t2_only": 0.36666666666666664
+  },
+  "t2_adversarial_base": {
+    "n_train": 1866,
+    "n_val": 330,
+    "generators_in_train": [
+      "claude",
+      "human",
+      "qwen2.5"
+    ],
+    "tpr_at_1pct_fpr_val": 1.0,
+    "tpr_at_5pct_fpr_val": 1.0,
+    "n_held_out_openai": 70,
+    "tpr_at_1pct_fpr_openai": 0.0,
+    "tpr_at_5pct_fpr_openai": 0.04285714285714286,
+    "tpr_at_1pct_fpr_salminen_2022_gpt2": 0.007378063877197326,
+    "tpr_at_5pct_fpr_salminen_2022_gpt2": 0.04050507551374102
   }
 }
