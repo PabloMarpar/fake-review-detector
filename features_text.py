@@ -22,14 +22,24 @@ OBSERVER_MODEL = "HuggingFaceTB/SmolLM2-360M-Instruct"
 PERFORMER_MODEL = "HuggingFaceTB/SmolLM2-360M"
 
 
+def get_device() -> torch.device:
+    """GPU si está disponible (CUDA), CPU si no -- misma llamada en cualquier
+    máquina, sin flags ni configuración manual (ver CONTEXTO.md: la máquina de
+    trabajo es CPU-only, la de casa tiene GPU).
+    """
+    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
 @lru_cache(maxsize=1)
 def _load_binoculars_models():
+    device = get_device()
     tokenizer = AutoTokenizer.from_pretrained(PERFORMER_MODEL)
-    performer = AutoModelForCausalLM.from_pretrained(PERFORMER_MODEL)
-    observer = AutoModelForCausalLM.from_pretrained(OBSERVER_MODEL)
+    performer = AutoModelForCausalLM.from_pretrained(PERFORMER_MODEL).to(device)
+    observer = AutoModelForCausalLM.from_pretrained(OBSERVER_MODEL).to(device)
     performer.eval()
     observer.eval()
-    return tokenizer, performer, observer
+    print(f"[features_text] Binoculars: modelos cargados en '{device}'.")
+    return tokenizer, performer, observer, device
 
 
 @lru_cache(maxsize=1)
@@ -49,9 +59,9 @@ def binoculars_score(text: str, max_tokens: int = 512) -> float:
     train.py sobre los propios datos de reviews, no con el umbral publicado
     en el paper original (pensado para texto largo, no para reviews).
     """
-    tokenizer, performer, observer = _load_binoculars_models()
+    tokenizer, performer, observer, device = _load_binoculars_models()
     encoding = tokenizer(text, return_tensors="pt", truncation=True, max_length=max_tokens)
-    input_ids = encoding["input_ids"]
+    input_ids = encoding["input_ids"].to(device)
     if input_ids.shape[1] < 2:
         return float("nan")
 

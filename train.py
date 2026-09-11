@@ -177,6 +177,21 @@ def score_binoculars_sample(n_per_group: int = 300) -> None:
             "tpr_at_5pct_fpr": _tpr_at_fpr(y, scores, 0.05),
         }
     }
+
+    # desglose por dataset de origen -- mismo motivo que en T3 (ver
+    # train_t3_baseline): Salminen (humano vs. GPT-2) y Ott (humano real vs.
+    # humano mintiendo, sin LLM de por medio) son problemas distintos, y
+    # mezclarlos en un solo número agregado esconde cuál de los dos está
+    # tirando del resultado.
+    for source in all_results["source_dataset"].unique():
+        mask = (all_results["source_dataset"] == source).values
+        metrics["t1_binoculars"][f"tpr_at_5pct_fpr_{source}"] = _tpr_at_fpr(
+            y[mask], scores[mask], 0.05
+        )
+        metrics["t1_binoculars"][f"tpr_at_1pct_fpr_{source}"] = _tpr_at_fpr(
+            y[mask], scores[mask], 0.01
+        )
+
     _save_metrics(metrics)
     print(json.dumps(metrics, indent=2))
 

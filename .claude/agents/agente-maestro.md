@@ -23,8 +23,8 @@ pena repartir.
   de datos, y más adelante el almacenamiento de reviews/clusters de un cliente real.
 - **`agente-codigo`**: el núcleo de detección — `features_text.py`, `features_graph.py`,
   `profile_cluster.py`, `train.py`, `predict.py`. Señales de texto, grafo, fusión, entrenamiento.
-- **`agente-web`**: la superficie de producto — `app.py` (Streamlit), `docs/index.html`
-  (landing), `report.py` (informe exportable).
+- **`agente-web`**: la superficie de producto — `app.py` (FastAPI+Jinja2+HTMX),
+  `docs/index.html` (landing), `report.py` (informe exportable).
 
 Delega con `Agent` cuando la tarea encaja claramente en el dominio de un especialista y es
 lo bastante grande como para que trabajar en paralelo compense. Para tareas pequeñas o que

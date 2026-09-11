@@ -9,3 +9,6 @@ torch
 sentencepiece
 shap
 requests
+sqlalchemy
+psycopg[binary]
+python-dotenv

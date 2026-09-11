@@ -5,3 +5,8 @@ __pycache__/
 *.egg-info/
 .ipynb_checkpoints/
 data_raw/
+.env
+own_corpus/_qwen_model/
+outputs/*_run*.log
+outputs/qwen_direct_download*.log
+outputs/qwen_manual_download.log

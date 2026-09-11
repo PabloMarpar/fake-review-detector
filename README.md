@@ -168,7 +168,10 @@ es validable de verdad con datos reales de un cliente futuro.
 - **S2 — escaneo self-serve**: sube un CSV con esquema documentado, mapeo de columnas con
   degradación honesta ("sin `reviewer_created_at` las señales de cohorte no están
   disponibles"), informe con fichas de cluster ordenadas, banda de "inconcluyente" visible,
-  exportación a JSON+PDF como informe de evidencia.
+  exportación a JSON+PDF como informe de evidencia. Stack: FastAPI + Jinja2 + HTMX (un único
+  proceso que llama a `predict.py` directamente, sin marca de terceros ni coste de licencia —
+  descartado Streamlit por ser incómodo de cara a comercializar: branding limitado, precio
+  que no encaja con un producto de pago).
 - **S3 — conexión OAuth** (más adelante, solo si hay un piloto real): Google Business Profile
   API / Trustpilot Business API.
 - **S4 — página de "Trust & Safety" publicable**, no un badge embebible: un badge convierte
@@ -235,7 +238,7 @@ fake-review-detector/
 ├── train.py               # entrena T1/T2/T3, el scorer de grafo y el modelo de fusión
 ├── predict.py              # scoring end-to-end (texto pegado / CSV) con los modelos ya entrenados
 ├── report.py                # exporta el informe de evidencia (JSON + PDF)
-├── app.py                    # Streamlit: el flujo self-serve (S2)
+├── app.py                    # FastAPI+Jinja2+HTMX: el flujo self-serve (S2)
 ├── docs/index.html            # landing page (S1)
 └── outputs/
     ├── models/

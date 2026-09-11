@@ -7,5 +7,14 @@
     "auc": 0.7307487040345124,
     "tpr_at_5pct_fpr_salminen_2022_gpt2": 0.6843278039118593,
     "tpr_at_5pct_fpr_ott_2013": 0.075
+  },
+  "t1_binoculars": {
+    "n_samples": 1200,
+    "tpr_at_1pct_fpr": 0.31166666666666665,
+    "tpr_at_5pct_fpr": 0.46,
+    "tpr_at_5pct_fpr_ott_2013": 0.08,
+    "tpr_at_1pct_fpr_ott_2013": 0.01,
+    "tpr_at_5pct_fpr_salminen_2022_gpt2": 0.8,
+    "tpr_at_1pct_fpr_salminen_2022_gpt2": 0.47
   }
 }
