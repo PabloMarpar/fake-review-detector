@@ -68,17 +68,57 @@ postura legal/ética y roadmap completos en `README.md`.
   corre sin cambios en la máquina de trabajo (CPU-only) y en la de casa (GPU), sin flags ni
   configuración manual. `_load_binoculars_models()` mueve performer/observer al device
   detectado e imprime en qué device ha cargado.
-- ⏳ T2 (DeBERTa-v3 afinado) — todavía no empezado. Ahora que hay GPU disponible en la
-  máquina de casa, ya no hace falta limitarse a small/xsmall por tiempo de CPU — se puede
-  valorar directamente `base` si el resultado lo justifica.
-- ⏳ Corpus propio con LLMs modernos (la pieza crítica según el README) — todavía no
-  generado. **Requiere una decisión pendiente del usuario**: con qué proveedor(es) de LLM
-  generarlo (¿usar Claude directamente vía esta misma sesión, que no necesita API key
-  propia, complementado con algún otro proveedor para tener diversidad de generador? ¿o
-  usar API keys propias de OpenAI/otros?). No se ha preguntado todavía porque no habíamos
-  llegado a ese punto del pipeline.
+- ✅ **Corpus propio con LLMs modernos** — generado (2026-09-11, misma sesión). Tres
+  generadores independientes en `own_corpus/`, cada uno con su script reproducible:
+  - **Generador A — Claude Sonnet 5** (`claude_generated.csv`, 100 reviews): autoría directa
+    de Claude en esta sesión, sin API key. 10 categorías de negocio × 10, mezcla naive/adversarial.
+  - **Generador B — Qwen2.5-1.5B-Instruct** (`qwen_generated.csv`, 500 reviews): local en la
+    GPU, gratis. Script: `generate_qwen_corpus.py`.
+  - **Generador C — OpenAI gpt-4o / gpt-4o-mini** (`openai_generated.csv`, creciendo): con
+    prompts basados en técnicas reales encontradas en foros (BlackHatWorld) sobre cómo se
+    generan reviews falsas de verdad — no solo "naive" e "adversarial" (roleplay/imaginary
+    framing) sino también "fewshot" (pegar una review real como referencia de estilo, la
+    técnica más avanzada del foro). Script: `generate_openai_corpus.py`.
+  - **Hallazgo de sesión, cuenta OpenAI**: el límite de 50 peticiones/día es una **ventana
+    móvil de 24h** (24h/50 = 28m48s exactos), no un reset a hora fija — un hueco se libera
+    cada ~29 min, no 50 de golpe. El script ahora espera y reintenta solo (parsea el tiempo
+    exacto del error), pensado para dejarlo corriendo sin relanzarlo a mano.
+  - `T2_HELD_OUT_GENERATOR_FILE` en `train.py` reserva OpenAI al 100% como "generador nunca
+    visto" — ni entrena ni calibra nada, solo evaluación.
+- ✅ **T2 (DeBERTa-v3-base) — pipeline escrito** (`python train.py t2`), todavía no
+  ejecutado con el corpus completo. Entrena con Ott (ambas clases) + Claude + Qwen; evalúa en
+  val propio, en el generador held-out (OpenAI) y en Salminen/GPT-2 completo (generador viejo,
+  dominio distinto) — dos chequeos de generalización independientes, no uno.
+- 🔴 **Hallazgo crítico de sesión — T1 y T3 evaluados contra el corpus propio
+  (`python train.py eval_own_corpus`)**: **fallan casi por completo contra LLMs modernos.**
+
+  | Señal | GPT-2 (2019) | Claude | Qwen | OpenAI |
+  |---|---|---|---|---|
+  | T1 TPR@5%FPR | 0.80 | 0.16 | 0.086 | 0.017 |
+  | T3 TPR@5%FPR | 0.68 | 0.01 | 0.02 | 0.10 |
+
+  Confirma con cifras reales el riesgo que el README ya avisaba citando RAID (96%/7%): T1
+  (perplejidad cruzada con SmolLM2-360M) y T3 (estilometría) estaban detectando artefactos
+  específicos de GPT-2, no "IA-nidad" en general. No es un problema de umbral — TPR@FPR ya usa
+  la curva ROC completa, así que no hay recalibración que lo arregle; es que las señales en sí
+  no separan las clases para estos generadores. **Consecuencia directa: T2 deja de ser "el
+  siguiente paso" y pasa a ser la única vía real de esta fase** — si tampoco generaliza bien al
+  generador held-out (OpenAI), la conclusión honesta de la Fase 0 sería que detectar reviews de
+  IA moderna es mucho más difícil de lo que sugería el baseline con GPT-2, y tocaría decir eso
+  claramente en vez de maquillarlo.
 - ⏳ `docs/index.html` (landing S1) — pendiente, se hace al cerrar la Fase 0 con cifras
   reales.
+- 🔴 **Bug real encontrado y corregido — `git autocrlf` corrompía el modelo T3**: esta
+  máquina tiene `core.autocrlf=true`, y `outputs/models/t3_lightgbm.txt` no tenía marca de
+  binario, así que el `git pull` inicial de la sesión convirtió sus saltos de línea LF a CRLF
+  — el formato de texto de LightGBM se rompe con eso (cada árbol/hoja queda desalineado),
+  así que cualquier carga del modelo commiteado producía predicciones basura ("Model format
+  error, expect a tree here"). Las métricas cacheadas de la sesión anterior en `metrics.json`
+  no se vieron afectadas (se calcularon antes de este checkout), pero reutilizar el fichero
+  para predicciones nuevas sí. Arreglado con `.gitattributes` (`outputs/models/** -text`) +
+  reentrenar T3 para regenerar un fichero limpio (cifras iguales a las de antes: TPR@5%FPR
+  0.667 global). **Importante para cualquier fichero de modelo futuro** (T2 en
+  `outputs/models/t2_deberta/`): ya cubierto por el mismo patrón en `.gitattributes`.
 - ✅ Infraestructura de BBDD (`db.py`, PostgreSQL en Neon vía SQLAlchemy 2.0) montada:
   tabla `reviews` con el esquema de `reviews_baseline.csv` + `id` autoincremental,
   conexión perezosa (no rompe el import sin `.env`), `pool_pre_ping` para el

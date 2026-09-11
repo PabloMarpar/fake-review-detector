@@ -16,5 +16,27 @@
     "tpr_at_1pct_fpr_ott_2013": 0.01,
     "tpr_at_5pct_fpr_salminen_2022_gpt2": 0.8,
     "tpr_at_1pct_fpr_salminen_2022_gpt2": 0.47
+  },
+  "t1_own_corpus": {
+    "n_claude": 100,
+    "tpr_at_1pct_fpr_claude": 0.06,
+    "tpr_at_5pct_fpr_claude": 0.16,
+    "n_qwen": 500,
+    "tpr_at_1pct_fpr_qwen": 0.036,
+    "tpr_at_5pct_fpr_qwen": 0.086,
+    "n_openai": 60,
+    "tpr_at_1pct_fpr_openai": 0.0,
+    "tpr_at_5pct_fpr_openai": 0.016666666666666666
+  },
+  "t3_own_corpus": {
+    "n_claude": 100,
+    "tpr_at_1pct_fpr_claude": 0.01,
+    "tpr_at_5pct_fpr_claude": 0.01,
+    "n_qwen": 500,
+    "tpr_at_1pct_fpr_qwen": 0.004,
+    "tpr_at_5pct_fpr_qwen": 0.02,
+    "n_openai": 60,
+    "tpr_at_1pct_fpr_openai": 0.016666666666666666,
+    "tpr_at_5pct_fpr_openai": 0.1
   }
 }
