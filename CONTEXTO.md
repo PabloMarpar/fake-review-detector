@@ -36,10 +36,18 @@ postura legal/ética y roadmap completos en `README.md`.
     explicabilidad.
   - Modelo guardado en `outputs/models/t3_lightgbm.txt`, métricas en `outputs/metrics.json`,
     features cacheadas en `outputs/stylometric_features.csv`.
-- 🔄 `python train.py t1` — pendiente de lanzar (Binoculars sobre muestra estratificada,
-  300 por grupo dataset×label). En CPU cada review tarda ~2-12s, no viable a las 42k
-  completas sin GPU. Guarda progreso incrementalmente en
-  `outputs/binoculars_sample_scores.csv` (reanudable si se interrumpe).
+- 🔄 `python train.py t1` — en progreso (Binoculars sobre muestra estratificada, 300 por
+  grupo dataset×label, 1.200 reviews en total). En CPU cada review tarda ~2-12s, no viable a
+  las 42k completas sin GPU (candidato claro para cuando se use la GPU de casa). Real: **260
+  únicas ya calculadas** a las 14:35 del 2026-09-11.
+  - **Bug real encontrado y corregido**: el checkpointing incremental no vaciaba el
+    acumulador `results` tras cada guardado, así que cada guardado re-concatenaba TODO lo
+    acumulado con TODO el CSV ya guardado — a las ~1100 iteraciones el fichero tenía 1.820
+    filas para solo 260 reviews únicas de verdad. No corrompía el resultado final (el
+    `drop_duplicates` de cierre lo disimulaba), pero cada guardado reescribía un CSV cada vez
+    más grande, ralentizando la ejecución progresivamente. Corregido en `train.py` — importante
+    para cualquier sesión futura: **si el conteo de líneas del CSV de checkpoint no cuadra
+    con el número de reviews de la muestra, hay que mirar `text.nunique()`, no `wc -l`**.
 - ⏳ T2 (DeBERTa-v3 afinado) — todavía no empezado. Pendiente de decidir tamaño del modelo
   (small vs. xsmall) según cuánto tarde el entrenamiento en esta máquina (CPU only, sin
   GPU — ver "Entorno técnico").
