@@ -118,9 +118,23 @@ def _load_model(repo_id: str, local_dir: Path):
 def _generate(tokenizer, model, device, prompt: str, seed: int, strip_think: bool) -> str:
     torch.manual_seed(seed)
     messages = [{"role": "user", "content": prompt}]
-    inputs = tokenizer.apply_chat_template(
-        messages, add_generation_prompt=True, return_tensors="pt", return_dict=True
-    ).to(device)
+    try:
+        # enable_thinking=False: algunos modelos "reasoning" (Qwen3) razonan
+        # por defecto dentro de <think>...</think> antes de responder -- para
+        # escribir una review no hace falta razonamiento, y con un
+        # max_new_tokens razonable el think ni siquiera llega a terminar
+        # (probado en sesion: 150 tokens se gastaban enteros en el think,
+        # cero texto de review real). Los modelos sin este parametro en su
+        # plantilla (Qwen2.5, DeepSeek-R1-Distill) lo ignoran via TypeError,
+        # capturado abajo.
+        inputs = tokenizer.apply_chat_template(
+            messages, add_generation_prompt=True, return_tensors="pt", return_dict=True,
+            enable_thinking=False,
+        ).to(device)
+    except TypeError:
+        inputs = tokenizer.apply_chat_template(
+            messages, add_generation_prompt=True, return_tensors="pt", return_dict=True
+        ).to(device)
     with torch.no_grad():
         output = model.generate(
             **inputs,
