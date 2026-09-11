@@ -7,8 +7,10 @@ textstat
 transformers
 torch
 sentencepiece
+protobuf
 shap
 requests
 sqlalchemy
 psycopg[binary]
 python-dotenv
+openai
