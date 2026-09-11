@@ -4,3 +4,4 @@ __pycache__/
 *_log.txt
 *.egg-info/
 .ipynb_checkpoints/
+data_raw/

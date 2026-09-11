@@ -1,0 +1,11 @@
+pandas
+numpy
+scikit-learn
+lightgbm
+spacy
+textstat
+transformers
+torch
+sentencepiece
+shap
+requests
