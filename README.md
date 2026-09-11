@@ -1,10 +1,11 @@
 # Detector de reviews falsas / generadas por IA
 
-> **Estado: en fase de diseño, sin implementar todavía.** Este README documenta la
-> arquitectura, las fuentes de datos y las decisiones ya tomadas *antes* de escribir una sola
-> línea de código de producción — incluidas varias ideas que se evaluaron en serio y se
-> descartaron con motivo. Se mantiene así de honesto a propósito: es más útil documentar el
-> razonamiento mientras la arquitectura todavía se puede cambiar que maquillarlo después.
+> **Estado: Fase 0 (baseline de texto) con resultados reales — ver "Resultados de Fase 0"
+> más abajo.** Este README documenta la arquitectura, las fuentes de datos y las decisiones
+> ya tomadas, incluidas varias ideas que se evaluaron en serio y se descartaron con motivo —
+> y ahora también los resultados medidos, no solo el plan. Se mantiene así de honesto a
+> propósito: incluye lo que no funcionó (T1/T3 casi al nivel del azar contra LLMs modernos,
+> una fusión que generalizaba peor que un modelo solo) tanto como lo que sí.
 
 Un sistema que puntúa la autenticidad de reviews y, sobre todo, de **redes de cuentas
 coordinadas**, combinando detección de texto generado por IA con análisis de grafos. Pensado
@@ -109,6 +110,41 @@ La fusión incorpora la longitud del texto como feature explícita y produce **t
 de falsos positivos objetivo — un detector que dice "no lo sé" en el 30% de reviews de 25
 palabras es más útil y más vendible que uno que adivina.
 
+## Resultados de Fase 0
+
+Generado un corpus propio con tres LLMs modernos independientes (Claude Sonnet 5, autoría
+directa; Qwen2.5-1.5B-Instruct, local; GPT-4o / GPT-4o-mini vía API), con uno de ellos
+(GPT-4o/-mini) reservado al 100% como generador **nunca visto** en entrenamiento ni
+calibración — la prueba de generalización real que este documento pedía desde el principio.
+TPR medido a dos umbrales de falsos positivos fijos (1% y 5%), no accuracy agregado:
+
+| Señal | GPT-2 (2019, dataset académico) | Held-out — LLM moderno nunca visto |
+|---|---|---|
+| T1 (Binoculars, zero-shot) | TPR@5%FPR 0.80 | **0.02–0.17** (Claude/Qwen/OpenAI) |
+| T3 (estilometría) | TPR@5%FPR 0.68 | **0.01–0.10** |
+| **T2 (DeBERTa-v3-base afinado)** | TPR@5%FPR 0.02 (generador viejo, dominio distinto) | **TPR@5%FPR 0.50, TPR@1%FPR 0.17** |
+| Fusión T1+T2+T3 | — | **0.017** (peor que T2 solo) |
+
+Tres hallazgos, honestos y medidos, no supuestos:
+
+1. **T1 y T3 no generalizan a LLMs modernos.** Su buen resultado contra el dataset académico
+   de GPT-2 no predice nada sobre Claude/Qwen/GPT-4o — confirma con cifras propias el problema
+   que RAID documentó (96% en el generador de entrenamiento, 7% en uno distinto): estaban
+   detectando artefactos de GPT-2 (2019), no "IA-nidad" en general.
+2. **T2, afinado sobre solo dos familias de LLM (Claude + Qwen), sí generaliza a una tercera
+   nunca vista (GPT-4o-mini)** — detecta la mitad de sus reviews dejando solo 5% de falsos
+   positivos. No generaliza igual a GPT-2 ni al dominio Amazon (nunca vio ese estilo de review
+   en entrenamiento) — la generalización es entre LLMs modernos, no universal a cualquier
+   generador o dominio, y se documenta así en vez de simplificarlo a "funciona".
+3. **Fusionar las tres señales generaliza peor que usar T2 solo**, no mejor — T1/T3 aportan
+   correlaciones espurias dentro de la distribución de entrenamiento que no se sostienen frente
+   a un generador nuevo, y contaminan la única señal que sí generaliza. Se decidió T2 solo
+   como señal de texto de esta fase tras medirlo, no por intuición.
+
+Detalle completo, incluidos los bugs de sesión que habría sido fácil dejar pasar sin darse
+cuenta (un modelo LightGBM corrompido por conversión de saltos de línea de git, DeBERTa-v3
+dando NaN en fp16), en `CONTEXTO.md`.
+
 ## Perfilado de clusters ("granjas de bots")
 
 El módulo de grafo implementa el método académico estándar para esto (Pacheco et al., ICWSM
@@ -183,7 +219,7 @@ es validable de verdad con datos reales de un cliente futuro.
 
 | Fase | Contenido |
 |---|---|
-| **0 — Baseline de texto + tesis pública** | Ott + Kaggle OR/CG, T1 (zero-shot) y T2 (DeBERTa-v3) con splits sin fuga de datos, arranque del corpus propio con un generador reservado como held-out. Se cierra publicando S1 con solo las cifras de esta fase. |
+| **0 — Baseline de texto + tesis pública** | Ott + Salminen/GPT-2, T1/T2/T3 + corpus propio con generador held-out — **resultados reales, ver arriba**. Pendiente solo: publicar S1 con estas cifras. |
 | **1 — Grafo + fusión + perfilado** | Yelp-Chi → NYC → ZIP, Louvain, fusión con banda de abstención, comparación contra SpEagle. Perfilado de clusters, Niveles A y B. |
 | **2 — Producto, no demo** | S2 completo (esquema CSV, informe, fichas de cluster con Niveles C y D, exportación de evidencia). Landing actualizada con métricas reales. |
 | **3 — Piloto y endurecimiento** | Robustez adversarial, deriva del detector, S3 (OAuth, solo si hay piloto), S4 (Trust & Safety). API tipo FastAPI solo si un piloto real la necesita. |
@@ -224,26 +260,26 @@ documentado porque el porqué importa tanto como el qué:
 - El perfilado de clusters no tiene ningún dataset con verdad de terreno — se evalúa con
   precisión-en-top-k, nunca con un AUC inventado.
 
-## Estructura prevista del repo
+## Estructura del repo
 
 ```
 fake-review-detector/
-├── .gitignore
-├── requirements.txt      # (siguiente sesión)
-├── README.md
-├── data.py               # descarga/prepara datasets académicos + genera el corpus propio con LLMs
-├── features_text.py      # T1 zero-shot + T2 DeBERTa-v3 afinado + T3 estilometría
-├── features_graph.py     # grafo reviewer-reviewer, burst detection, Louvain, embeddings
-├── profile_cluster.py    # perfil de cada cluster: señales por nivel + modelos nulos + lenguaje estimativo
-├── train.py               # entrena T1/T2/T3, el scorer de grafo y el modelo de fusión
-├── predict.py              # scoring end-to-end (texto pegado / CSV) con los modelos ya entrenados
-├── report.py                # exporta el informe de evidencia (JSON + PDF)
-├── app.py                    # FastAPI+Jinja2+HTMX: el flujo self-serve (S2)
-├── docs/index.html            # landing page (S1)
+├── .gitignore / .gitattributes
+├── requirements.txt
+├── README.md / CONTEXTO.md
+├── data.py               # descarga/prepara Ott + Salminen/GPT-2
+├── own_corpus/           # corpus propio: 3 generadores (Claude/Qwen/OpenAI) + scripts
+├── features_text.py      # T1 zero-shot + T3 estilometría + get_device() (CPU/GPU auto)
+├── train.py               # entrena/evalua T1, T2 (DeBERTa-v3), T3, fusion, eval_own_corpus
+├── db.py                  # esquema Neon/PostgreSQL (reviews) -- sin datos migrados aún
+├── features_graph.py     # grafo reviewer-reviewer, burst detection, Louvain, embeddings -- Fase 1, no existe aún
+├── profile_cluster.py    # perfil de cada cluster: señales por nivel + modelos nulos -- Fase 1, no existe aún
+├── predict.py              # scoring end-to-end (texto pegado / CSV) -- Fase 2, no existe aún
+├── report.py                # exporta el informe de evidencia (JSON + PDF) -- Fase 2, no existe aún
+├── app.py                    # FastAPI+Jinja2+HTMX: el flujo self-serve (S2) -- Fase 2, no existe aún
+├── docs/index.html            # landing page (S1) -- pendiente, se hace al cerrar Fase 0
 └── outputs/
-    ├── models/
+    ├── models/            # t3_lightgbm.txt (en git) + t2_deberta/ (737MB, gitignored, reproducible)
     ├── metrics.json
-    └── *.png / *.json
+    └── *.csv
 ```
-
-Ninguno de estos ficheros existe todavía — es el plan para cuando arranque la implementación.
