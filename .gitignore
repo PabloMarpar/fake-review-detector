@@ -10,4 +10,5 @@ own_corpus/_qwen_model/
 _model_cache/
 outputs/*.log
 outputs/models/t2_deberta/
+outputs/models/t2_deberta_*/
 outputs/models/t2_adversarial_*/

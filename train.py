@@ -31,15 +31,18 @@ STYLO_CACHE = OUTPUTS / "stylometric_features.csv"
 BINOC_CACHE = OUTPUTS / "binoculars_sample_scores.csv"
 METRICS_JSON = OUTPUTS / "metrics.json"
 
-T2_MODEL_REPO = "microsoft/deberta-v3-base"
-# huggingface_hub se cuelga de forma reproducible en esta red (ver
-# own_corpus/_download_model_direct.py y CONTEXTO.md) -- si ya se descargo a
-# mano ahi, se carga desde local en vez de disparar otra descarga por red.
-_T2_LOCAL_MODEL_DIR = BASE_DIR / "_model_cache" / "deberta-v3-base"
-T2_MODEL_NAME = str(_T2_LOCAL_MODEL_DIR) if (_T2_LOCAL_MODEL_DIR / "pytorch_model.bin").exists() else T2_MODEL_REPO
-# gpt-4o(-mini) se reserva 100% como generador "nunca visto" -- ni entrena ni
-# calibra T2, solo se usa en evaluacion (ver CONTEXTO.md, seccion corpus propio).
-T2_HELD_OUT_GENERATOR_FILE = "openai_generated.csv"
+def _resolve_t2_model_name(size: str = "base") -> str:
+    # huggingface_hub se cuelga de forma reproducible en esta red (ver
+    # own_corpus/_download_model_direct.py y CONTEXTO.md) -- si ya se
+    # descargo a mano ahi, se carga desde local en vez de disparar otra
+    # descarga por red.
+    repo = f"microsoft/deberta-v3-{size}"
+    local_dir = BASE_DIR / "_model_cache" / f"deberta-v3-{size}"
+    return str(local_dir) if (local_dir / "pytorch_model.bin").exists() else repo
+# OpenAI y DeepSeek se reservan 100% como generadores "nunca vistos" -- ni
+# entrenan ni calibran T2, solo se usan en evaluacion (ver CONTEXTO.md,
+# seccion corpus propio). Dos held-out independientes, no uno.
+T2_HELD_OUT_GENERATOR_FILES = {"openai_generated.csv": "openai", "deepseek_generated.csv": "deepseek"}
 T2_TRAIN_GENERATOR_FILES = ["claude_generated.csv", "qwen_generated.csv", "qwen3_generated.csv"]
 
 STYLO_FEATURE_COLS = [
@@ -224,11 +227,11 @@ class _ReviewDataset(Dataset):
 
 
 def _build_t2_datasets():
-    """Train/val (Ott + generadores de train del corpus propio) y dos sets
-    held-out que nunca entran en entrenamiento ni calibracion: el generador
-    "nunca visto" (T2_HELD_OUT_GENERATOR_FILE) y Salminen/GPT-2 completo
-    (generador viejo, dominio Amazon en vez de hoteles) -- ver README,
-    seccion T2, y CONTEXTO.md.
+    """Train/val (Ott + generadores de train del corpus propio) y held-out
+    que nunca entran en entrenamiento ni calibracion: los generadores
+    "nunca vistos" (T2_HELD_OUT_GENERATOR_FILES, uno o mas) y Salminen/GPT-2
+    completo (generador viejo, dominio Amazon en vez de hoteles) -- ver
+    README, seccion T2, y CONTEXTO.md.
     """
     baseline = pd.read_csv(DATA_CSV)
     ott = baseline[baseline["source_dataset"] == "ott_2013"]
@@ -254,31 +257,38 @@ def _build_t2_datasets():
         data, test_size=0.15, random_state=0, stratify=data["label"]
     )
 
-    held_out_path = OWN_CORPUS_DIR / T2_HELD_OUT_GENERATOR_FILE
-    held_out_ai = pd.read_csv(held_out_path) if held_out_path.exists() else pd.DataFrame()
+    held_out = {}
+    for fname, gname in T2_HELD_OUT_GENERATOR_FILES.items():
+        path = OWN_CORPUS_DIR / fname
+        if path.exists():
+            held_out[gname] = pd.read_csv(path)
     # Humano de referencia para el held-out: Salminen "OR" (humano real,
     # dominio Amazon, distinto al Ott usado en train) -- no reutiliza humano
     # ya visto en entrenamiento.
     held_out_human = salminen[~salminen["is_fake"]]["text"]
 
-    return train_df, val_df, held_out_ai, held_out_human, salminen
+    return train_df, val_df, held_out, held_out_human, salminen
 
 
-def train_t2_deberta(epochs: int = 3, batch_size: int = 16, lr: float = 2e-5) -> None:
+def train_t2_deberta(epochs: int = 3, batch_size: int | None = None, lr: float = 2e-5, model_size: str = "base") -> None:
+    batch_size = batch_size or (16 if model_size == "base" else 8)
     device = get_device()
-    train_df, val_df, held_out_ai, held_out_human, salminen = _build_t2_datasets()
+    model_name = _resolve_t2_model_name(model_size)
+    train_df, val_df, held_out, held_out_human, salminen = _build_t2_datasets()
 
+    print(f"Modelo: {model_name}")
     print(f"Train: {len(train_df)} {train_df['label'].value_counts().to_dict()}")
     print(f"Val: {len(val_df)} {val_df['label'].value_counts().to_dict()}")
-    print(f"Held-out generador nunca visto ({T2_HELD_OUT_GENERATOR_FILE}): {len(held_out_ai)}")
+    for gname, df in held_out.items():
+        print(f"Held-out '{gname}' (nunca visto): {len(df)}")
 
-    tokenizer = AutoTokenizer.from_pretrained(T2_MODEL_NAME)
-    # dtype=float32 explicito: el checkpoint de deberta-v3-base esta en fp16, y
-    # DeBERTa-v2/v3 es conocido por producir NaN en entrenamiento con fp16
-    # (issue documentado del propio modelo) -- confirmado en esta sesion, loss
-    # se iba a NaN en la primera epoca hasta forzar fp32.
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    # dtype=float32 explicito: el checkpoint de deberta-v3-base/large esta en
+    # fp16, y DeBERTa-v2/v3 es conocido por producir NaN en entrenamiento con
+    # fp16 (issue documentado del propio modelo) -- confirmado en esta
+    # sesion, loss se iba a NaN en la primera epoca hasta forzar fp32.
     model = AutoModelForSequenceClassification.from_pretrained(
-        T2_MODEL_NAME, num_labels=2, dtype=torch.float32
+        model_name, num_labels=2, dtype=torch.float32
     ).to(device)
 
     def _encode(texts):
@@ -308,7 +318,7 @@ def train_t2_deberta(epochs: int = 3, batch_size: int = 16, lr: float = 2e-5) ->
             total_loss += out.loss.item()
         print(f"  epoch {epoch + 1}/{epochs} loss={total_loss / len(train_loader):.4f}")
 
-    model_dir = MODELS_DIR / "t2_deberta"
+    model_dir = MODELS_DIR / ("t2_deberta" if model_size == "base" else f"t2_deberta_{model_size}")
     model_dir.mkdir(parents=True, exist_ok=True)
     model.save_pretrained(model_dir)
     tokenizer.save_pretrained(model_dir)
@@ -327,8 +337,10 @@ def train_t2_deberta(epochs: int = 3, batch_size: int = 16, lr: float = 2e-5) ->
 
     val_scores = _predict_scores(val_df["text"].tolist())
     val_y = val_df["label"].values
+    metric_key = "t2_deberta" if model_size == "base" else f"t2_deberta_{model_size}"
     metrics = {
-        "t2_deberta": {
+        metric_key: {
+            "model": model_name,
             "n_train": len(train_df),
             "n_val": len(val_df),
             "tpr_at_1pct_fpr_val": _tpr_at_fpr(val_y, val_scores, 0.01),
@@ -336,19 +348,21 @@ def train_t2_deberta(epochs: int = 3, batch_size: int = 16, lr: float = 2e-5) ->
         }
     }
 
-    if len(held_out_ai) and len(held_out_human):
-        ho_texts = list(held_out_ai["text"]) + list(held_out_human)
-        ho_y = np.array([1] * len(held_out_ai) + [0] * len(held_out_human))
+    for gname, ai_df in held_out.items():
+        if not len(held_out_human):
+            continue
+        ho_texts = list(ai_df["text"]) + list(held_out_human)
+        ho_y = np.array([1] * len(ai_df) + [0] * len(held_out_human))
         ho_scores = _predict_scores(ho_texts)
-        metrics["t2_deberta"]["n_held_out_generator"] = len(held_out_ai)
-        metrics["t2_deberta"]["tpr_at_1pct_fpr_held_out_generator"] = _tpr_at_fpr(ho_y, ho_scores, 0.01)
-        metrics["t2_deberta"]["tpr_at_5pct_fpr_held_out_generator"] = _tpr_at_fpr(ho_y, ho_scores, 0.05)
+        metrics[metric_key][f"n_held_out_{gname}"] = len(ai_df)
+        metrics[metric_key][f"tpr_at_1pct_fpr_{gname}"] = _tpr_at_fpr(ho_y, ho_scores, 0.01)
+        metrics[metric_key][f"tpr_at_5pct_fpr_{gname}"] = _tpr_at_fpr(ho_y, ho_scores, 0.05)
 
     if len(salminen):
         sal_scores = _predict_scores(salminen["text"].tolist())
         sal_y = salminen["is_fake"].astype(int).values
-        metrics["t2_deberta"]["tpr_at_1pct_fpr_salminen_2022_gpt2"] = _tpr_at_fpr(sal_y, sal_scores, 0.01)
-        metrics["t2_deberta"]["tpr_at_5pct_fpr_salminen_2022_gpt2"] = _tpr_at_fpr(sal_y, sal_scores, 0.05)
+        metrics[metric_key]["tpr_at_1pct_fpr_salminen_2022_gpt2"] = _tpr_at_fpr(sal_y, sal_scores, 0.01)
+        metrics[metric_key]["tpr_at_5pct_fpr_salminen_2022_gpt2"] = _tpr_at_fpr(sal_y, sal_scores, 0.05)
 
     _save_metrics(metrics)
     print(json.dumps(metrics, indent=2))
@@ -499,7 +513,7 @@ if __name__ == "__main__":
     elif step == "t1":
         score_binoculars_sample()
     elif step == "t2":
-        train_t2_deberta()
+        train_t2_deberta(model_size=sys.argv[2] if len(sys.argv) > 2 else "base")
     elif step == "eval_own_corpus":
         evaluate_own_corpus()
     elif step == "fusion":

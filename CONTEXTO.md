@@ -403,6 +403,62 @@ desconfiar de resultados fuertes contra generadores viejos (GPT-2) como indicado
 funcionará contra LLMs modernos, y priorizar el corpus propio con generadores actuales por
 encima de pulir T2 contra datos que no representan el caso de uso real.
 
+## Cierre de sesión (2026-09-12, ~11:30) — apagado del ordenador de casa
+
+Estado real al cortar, sin maquillar:
+
+- **T2 con 3 generadores (Claude+Qwen2.5+Qwen3), `deberta-v3-base`**: ✅ resultado válido y
+  documentado arriba — TPR@5%FPR 0.825, TPR@1%FPR 0.525 en held-out OpenAI. Este es el modelo
+  bueno de la sesión, en `outputs/models/t2_deberta/`.
+- **`deberta-v3-large` con los mismos 3 generadores**: ⚠️ **no terminó** — el entrenamiento
+  (loss bajó bien, sin NaN: 0.21→0.03→0.01) se completó, pero la evaluación posterior contra
+  Salminen completo (40k reviews) se quedó casi 50 minutos sin terminar con la GPU al
+  96-99% sostenido. No estaba claro si era solo lento por el tamaño de `large` o si estaba
+  realmente atascado, y no había tiempo para averiguarlo con el apagado inminente — se mató
+  el proceso limpio en vez de arriesgar perderlo a medias. **Pendiente**: retomar con más
+  margen de tiempo, y si se repite el parón, sospechar primero del batch de evaluación sobre
+  40k filas con `large` (podría convenir bajarlo o trocearlo en vez de un único predict).
+- **DeepSeek-R1-Distill-Llama-8B (held-out nuevo)**: 70/100, parado a medias (se le dio
+  prioridad a `large` y luego al tier nuevo de OpenAI). Reanudable con el mismo comando de
+  siempre.
+- **Mistral-7B-Instruct-v0.3 (4º generador de train, propuesto)**: descargado del todo
+  (`_model_cache/mistral-7b-instruct-v0.3/`), pero **la generación de reviews nunca se
+  lanzó** — quedó pendiente. `train.py` ya tiene `T2_TRAIN_GENERATOR_FILES` listo para
+  añadir `mistral_generated.csv` en cuanto exista.
+- **OpenAI — tier de cuenta subió a mitad de sesión** (usuario añadió algo en el dashboard):
+  de 50 RPD a **10.000 RPD / 500 RPM** para `gpt-4o-mini` y `gpt-4o`. Debería haber disparado
+  la generación, pero se quedó parado en 90 reviews (70 gpt-4o-mini + 20 gpt-4o) sin dar
+  tiempo a diagnosticar por qué antes del apagado — **revisar el log
+  `outputs/openai_corpus_fasttier.log` y relanzar `own_corpus/generate_openai_corpus.py` la
+  próxima vez que haya sesión**, ahora sí debería volar con el tier nuevo.
+
+**Todo lo de arriba está commiteado y pusheado** salvo, por diseño, los checkpoints de
+modelo grandes (gitignored, reproducibles) — no hay trabajo sin guardar en este apagado.
+
+## Próximos días sin GPU (portátil de trabajo) — qué se puede hacer
+
+El usuario va a trabajar los próximos días desde el portátil del curro, sin GPU — nada de
+entrenar/generar con modelos locales grandes (Qwen3-8B, DeepSeek, Mistral-7B). Eso deja en
+pausa: completar el corpus de Mistral (descargado, generación sin lanzar), terminar DeepSeek
+(70/100), reintentar `deberta-v3-large` con más generadores. Retomar eso en el ordenador de
+casa cuando vuelva.
+
+Mientras tanto, trabajo con sentido que sí es CPU-only:
+
+1. **Fase 1 (grafo + coordinación de cuentas)** — la siguiente fase del roadmap y no necesita
+   GPU en absoluto:
+   - `data.py`: descargar Yelp-NYC / Yelp-ZIP (Rayana & Akoglu) — dataset con grafo real
+     reviewer-negocio + etiqueta proxy de spam, a escala.
+   - `features_graph.py` (no existe aún): grafo bipartito reviewer↔negocio → proyección
+     reviewer-reviewer, burst detection, clustering con Louvain, embeddings.
+   - `profile_cluster.py` (no existe aún): ficha de cluster con Niveles A (estructural/
+     temporal) y B (cohorte de cuenta) — diseño ya cerrado en README.md.
+   - Comparación contra el ~0.78 AUC publicado de SpEagle.
+2. **`docs/index.html` (landing S1)** — ya hay cifras reales de Fase 0 que enseñar, buen
+   momento para cerrarlo (pendiente según el roadmap).
+3. **Más corpus de Claude** (Generador A) — se genera escribiéndolo yo directamente en
+   sesión, no necesita GPU ni API. Útil para cuando se retome el entrenamiento en casa.
+
 ## Fuentes de referencia rápida
 
 - Arquitectura completa, roadmap por fases, líneas rojas sobre atribución, y las ideas
