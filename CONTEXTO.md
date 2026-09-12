@@ -216,6 +216,29 @@ discriminador) — esta es una simplificación de una sola pieza de esa idea, no
 reproducción completa, así que no generalizar bien no dice necesariamente que la idea
 del paper esté mal, solo que esta versión simplificada no basta.
 
+## 🟢 Resultado central de la noche: T2 baseline + 3er generador, salto real
+
+Mientras la técnica adversarial se descartaba, se probó lo más simple y con más razón para
+funcionar: reentrenar el **T2 baseline de siempre** (clasificador plano, `deberta-v3-base`,
+sin ningún truco) añadiendo Qwen3-8B como tercer generador de entrenamiento junto a
+Claude+Qwen2.5. Resultado:
+
+| | T2 con 2 generadores (sesión anterior) | T2 con 3 generadores (Claude+Qwen2.5+Qwen3) |
+|---|---|---|
+| Held-out OpenAI TPR@5%FPR | 0.50 | **0.825** |
+| Held-out OpenAI TPR@1%FPR | 0.17 | **0.525** |
+| Val (misma distribución de train) | ~1.0 | 1.0 |
+| Salminen/GPT-2 (dominio distinto) | 0.02 | 0.03 (sigue sin generalizar ahí, esperado) |
+
+**Confirma la hipótesis original de la forma más limpia posible**: la palanca que de verdad
+importa es la diversidad de generadores en entrenamiento, no la sofisticación de la
+arquitectura — la misma arquitectura simple que ya funcionaba, con un tercer generador
+(que además usa las técnicas de prompt nuevas: persona, traducción, más rango de longitud),
+pasa de detectar la mitad de las reviews de un generador nunca visto a detectar más del 80%
+dejando solo 5% de falsos positivos. Es la mejora real de la noche — mucho más que cualquier
+cambio de arquitectura probado. Modelo en `outputs/models/t2_deberta/` (sobrescribe la
+versión de 2 generadores; no está en git por tamaño, reproducible con `python train.py t2`).
+
 **DeepSeek-R1-Distill-Llama-8B — objetivo reducido de 300 a 100 por tiempo real.** A
 diferencia de Qwen3, este modelo **siempre** razona, sin toggle para desactivarlo (confirmado
 por su documentación). Prueba manual: el pensamiento sí termina dentro de 350 tokens

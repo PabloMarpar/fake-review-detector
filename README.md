@@ -112,42 +112,40 @@ palabras es más útil y más vendible que uno que adivina.
 
 ## Resultados de Fase 0
 
-Generado un corpus propio con tres LLMs modernos independientes (Claude Sonnet 5, autoría
-directa; Qwen2.5-1.5B-Instruct, local; GPT-4o / GPT-4o-mini vía API), con uno de ellos
-(GPT-4o/-mini) reservado al 100% como generador **nunca visto** en entrenamiento ni
-calibración — la prueba de generalización real que este documento pedía desde el principio.
-TPR medido a dos umbrales de falsos positivos fijos (1% y 5%), no accuracy agregado:
+Generado un corpus propio con LLMs modernos independientes (Claude Sonnet 5, autoría directa;
+Qwen2.5-1.5B-Instruct y Qwen3-8B, locales; GPT-4o / GPT-4o-mini vía API), con GPT-4o/-mini
+reservado al 100% como generador **nunca visto** en entrenamiento ni calibración — la prueba
+de generalización real que este documento pedía desde el principio. TPR medido a dos umbrales
+de falsos positivos fijos (1% y 5%), no accuracy agregado:
 
 | Señal | GPT-2 (2019, dataset académico) | Held-out — LLM moderno nunca visto |
 |---|---|---|
 | T1 (Binoculars, zero-shot) | TPR@5%FPR 0.80 | **0.02–0.17** (Claude/Qwen/OpenAI) |
 | T3 (estilometría) | TPR@5%FPR 0.68 | **0.01–0.10** |
-| **T2 (DeBERTa-v3-base afinado)** | TPR@5%FPR 0.02 (generador viejo, dominio distinto) | **TPR@5%FPR 0.50, TPR@1%FPR 0.17** |
-| Fusión T1+T2+T3 | — | **0.017** (peor que T2 solo) |
+| **T2 (DeBERTa-v3-base afinado, 3 generadores en train)** | TPR@5%FPR 0.03 (generador viejo, dominio distinto) | **TPR@5%FPR 0.825, TPR@1%FPR 0.525** |
+| Fusión T1+T2+T3 | — | peor que T2 solo (descartada) |
+| T2 + cabeza adversarial de generador | — | peor que T2 solo (descartada) |
 
-Tres hallazgos, honestos y medidos, no supuestos:
+Cuatro hallazgos, honestos y medidos, no supuestos:
 
 1. **T1 y T3 no generalizan a LLMs modernos.** Su buen resultado contra el dataset académico
    de GPT-2 no predice nada sobre Claude/Qwen/GPT-4o — confirma con cifras propias el problema
    que RAID documentó (96% en el generador de entrenamiento, 7% en uno distinto): estaban
    detectando artefactos de GPT-2 (2019), no "IA-nidad" en general.
-2. **T2, afinado sobre solo dos familias de LLM (Claude + Qwen), sí generaliza a una tercera
-   nunca vista (GPT-4o-mini)** — detecta la mitad de sus reviews dejando solo 5% de falsos
-   positivos. No generaliza igual a GPT-2 ni al dominio Amazon (nunca vio ese estilo de review
-   en entrenamiento) — la generalización es entre LLMs modernos, no universal a cualquier
-   generador o dominio, y se documenta así en vez de simplificarlo a "funciona".
+2. **T2 generaliza a un LLM moderno nunca visto, y la diversidad de generadores en
+   entrenamiento es la palanca que de verdad importa** — con 2 familias de train (Claude +
+   Qwen2.5) detectaba la mitad de las reviews de GPT-4o-mini a 5% de falsos positivos; al
+   añadir una tercera (Qwen3-8B) sube a más del 80%. No generaliza igual a GPT-2 ni al dominio
+   Amazon (nunca vio ese estilo de review en entrenamiento) — la generalización es entre LLMs
+   modernos, no universal a cualquier generador o dominio.
 3. **Fusionar las tres señales generaliza peor que usar T2 solo**, no mejor — T1/T3 aportan
    correlaciones espurias dentro de la distribución de entrenamiento que no se sostienen frente
-   a un generador nuevo, y contaminan la única señal que sí generaliza. Se decidió T2 solo
-   como señal de texto de esta fase tras medirlo, no por intuición.
-
-También se probó una arquitectura más sofisticada de T2 — una cabeza adversarial que intenta
-que el modelo deje de reconocer de qué generador viene un texto (inspirada en un método
-publicado en ACL 2026), con la idea de forzarlo a aprender "IA-nidad" genérica en vez de tics
-de Claude/Qwen concretos. Con tres configuraciones distintas probadas (más generadores en
-entrenamiento, menos presión adversarial) siempre quedó muy por debajo del T2 simple —
-**se descarta también**, con la misma disciplina que la fusión: probarlo y medirlo, no
-asumir que "más sofisticado" es "mejor".
+   a un generador nuevo, y contaminan la única señal que sí generaliza.
+4. **Una arquitectura más sofisticada no ganó a la simple.** Se probó una cabeza adversarial
+   que fuerza al modelo a dejar de reconocer de qué generador viene un texto (inspirada en un
+   método publicado en ACL 2026) — en tres configuraciones distintas, siempre por debajo del
+   T2 simple. La mejora real vino de más datos de entrenamiento diversos, no de más
+   sofisticación de modelo.
 
 Detalle completo, incluidos los bugs de sesión que habría sido fácil dejar pasar sin darse
 cuenta (un modelo LightGBM corrompido por conversión de saltos de línea de git, DeBERTa-v3

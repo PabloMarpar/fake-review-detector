@@ -40,7 +40,7 @@ T2_MODEL_NAME = str(_T2_LOCAL_MODEL_DIR) if (_T2_LOCAL_MODEL_DIR / "pytorch_mode
 # gpt-4o(-mini) se reserva 100% como generador "nunca visto" -- ni entrena ni
 # calibra T2, solo se usa en evaluacion (ver CONTEXTO.md, seccion corpus propio).
 T2_HELD_OUT_GENERATOR_FILE = "openai_generated.csv"
-T2_TRAIN_GENERATOR_FILES = ["claude_generated.csv", "qwen_generated.csv"]
+T2_TRAIN_GENERATOR_FILES = ["claude_generated.csv", "qwen_generated.csv", "qwen3_generated.csv"]
 
 STYLO_FEATURE_COLS = [
     "n_words",
