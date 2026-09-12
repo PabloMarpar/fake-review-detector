@@ -657,9 +657,44 @@ crear cuenta Netlify e importar el repo (publish directory `docs`), y conectar e
 Hasta que eso pase, la web solo existe en local — verificado sirviéndola con
 `py -m http.server` desde `docs/`, sin errores.
 
-**Próximo paso**: con la landing ya escrita, lo que queda es contenido/diseño (revisar en
-navegador, ajustar copy o estética si algo no convence) y luego el despliegue real siguiendo
-los pasos de arriba.
+**Actualización — landing ya desplegada en Netlify**
+(`https://fake-review-detector-s.netlify.app`), tras arreglar un fallo de build: Netlify
+detectaba `requirements.txt` en la raíz del repo e intentaba instalar todo (`torch` incluido)
+como parte del build de una web estática. Arreglado con `netlify.toml` en la raíz
+(`base = "docs"`, `publish = "."`) para que Netlify solo mire dentro de `docs/`. Pendiente
+todavía: conectar `checkgraph.dev` (comprado en Cloudflare) como dominio propio del site.
+
+**Decisión de vertical/público objetivo (mismo día, sesión posterior)**: en vez del mensaje
+genérico "para plataformas con reviews propias", el público a atacar primero para
+mensaje/SEO es **marketplaces y directorios de proveedores de servicios (freelance, servicios
+a domicilio, alquiler vacacional independiente, etc.)** — no e-commerce grande (ya construyen
+esto in-house o usan Trustpilot/Bazaarvoice) ni review-sites tipo G2/Glassdoor (equipo interno
+propio, muy cerrado a proveedores externos). Motivo: el incentivo a hacer trampa es directo (el
+proveedor con más 5 estrellas se lleva el siguiente trabajo), normalmente no tienen equipo de
+datos propio, y hay evidencia real y reciente del problema (WIRED documentó en 2023 redes de
+proveedores intercambiándose reseñas falsas en plataformas de freelance tipo Fiverr, sigue
+activo en 2026). Además, en español el SEO de "detectar reseñas falsas" está ocupado solo por
+contenido de consumidor (Newtral, Redeszone...), nadie posicionado con contenido dirigido al
+dueño del marketplace — hueco de SEO real, no solo de producto.
+
+**Keywords candidatas para comprobar volumen real en Google Keyword Planner** (pendiente: el
+usuario las mete y me pasa los números para afinar el enfoque):
+- Dolor/problema: "reseñas falsas marketplace", "reseñas falsas proveedores freelance",
+  "verificar reseñas falsas plataforma", "cómo detectar cuentas falsas marketplace".
+- Compra/herramienta: "software detección reseñas falsas", "herramienta verificación reseñas
+  marketplace", "moderación de reseñas para marketplace", "detectar reviews falsas
+  freelancers", "prevenir fraude de reseñas plataforma", "alternativa a Fakespot para
+  empresas".
+- Regulatorio: "normativa DSA reseñas falsas", "sanciones reseñas falsas Unión Europea",
+  "cumplimiento FTC reseñas falsas", "DMCC reseñas falsas Reino Unido", "obligación legal
+  moderar reseñas plataforma".
+- Inglés: "fake review detection software marketplace", "review fraud detection platform
+  providers", "fake reviews freelance marketplace".
+
+**Próximo paso**: con el vertical ya decidido, se reescribe la copy de `docs/index.html` para
+hablarle directamente a ese público (eyebrow, meta title/description para SEO, y la sección
+"por qué ahora" con el ángulo de proveedores compitiendo por reseñas, no solo el argumento
+regulatorio genérico).
 
 ## Fuentes de referencia rápida
 

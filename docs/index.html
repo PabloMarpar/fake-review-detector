@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>CheckGraph — Detección de reviews falsas y redes coordinadas</title>
-<meta name="description" content="CheckGraph analiza el texto y el comportamiento de las cuentas de tu plataforma para separar reviews genuinas de campañas coordinadas, con evidencia exportable." />
+<title>CheckGraph — Detección de reseñas falsas para marketplaces y directorios de proveedores</title>
+<meta name="description" content="CheckGraph detecta reseñas falsas y redes de proveedores coordinados en marketplaces de servicios y plataformas freelance, con evidencia exportable para cumplir la normativa de reseñas falsas (FTC, DMCC, DSA)." />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -37,12 +37,12 @@
   <!-- Hero -->
   <section class="hero">
     <div class="wrap">
-      <p class="eyebrow">Para plataformas con reviews propias</p>
-      <h1>Las reviews falsas ya no son solo un problema de reputación. Ahora es una obligación legal.</h1>
+      <p class="eyebrow">Para marketplaces y directorios de proveedores</p>
+      <h1>En tu marketplace, la reseña decide quién se lleva el siguiente trabajo. Algunos proveedores hacen trampa para conseguirlo.</h1>
       <p class="lede">
         CheckGraph combina el análisis del texto con el comportamiento real de las cuentas de tu
-        plataforma para separar opiniones genuinas de campañas coordinadas — con un informe de
-        evidencia exportable, no con una etiqueta a ciegas.
+        plataforma para separar opiniones genuinas de campañas coordinadas entre proveedores —
+        con un informe de evidencia exportable, no con una etiqueta a ciegas.
       </p>
       <div class="hero-actions">
         <a class="btn btn-primary" href="#acceso">Solicitar acceso anticipado</a>
@@ -53,14 +53,14 @@
     <div class="wrap">
       <div class="preview-card reveal" id="preview">
         <div class="preview-head">
-          <span>informe — comercio-ejemplo.com</span>
+          <span>informe — marketplace-ejemplo.com</span>
           <span class="preview-dot"><span></span><span></span><span></span></span>
         </div>
 
         <div class="review-row">
           <div>
             <div class="review-meta">M. Alonso · hace 2 días</div>
-            <div class="review-text">"Pedimos dos veces y ambas llegó en el plazo indicado, sin sorpresas. Repetiré seguro."</div>
+            <div class="review-text">"Contraté al proveedor para una reforma pequeña y cumplió el plazo que había dado, sin sorpresas. Repetiría."</div>
           </div>
           <span class="badge badge-good">
             <svg viewBox="0 0 20 20" fill="currentColor"><path d="M16.7 5.3a1 1 0 0 1 0 1.4l-7.4 7.4a1 1 0 0 1-1.4 0l-3.6-3.6a1 1 0 1 1 1.4-1.4l2.9 2.9 6.7-6.7a1 1 0 0 1 1.4 0z"/></svg>
@@ -71,7 +71,7 @@
         <div class="review-row">
           <div>
             <div class="review-meta">carla_r92 · hace 6 horas</div>
-            <div class="review-text">"Increíble producto, superó todas mis expectativas, altamente recomendado para todos, el mejor de su categoría."</div>
+            <div class="review-text">"Increíble profesional, superó todas mis expectativas, altamente recomendado para todos, el mejor de su categoría."</div>
             <div class="review-flag">⚠ Cluster: 7 cuentas registradas la misma noche, texto con estructura casi idéntica</div>
           </div>
           <span class="badge badge-warn">
@@ -83,7 +83,7 @@
         <div class="review-row">
           <div>
             <div class="review-meta">j.moreno88 · hace 1 día</div>
-            <div class="review-text">"El envío tardó un poco más de lo esperado pero el trato al escribir a soporte fue muy bueno."</div>
+            <div class="review-text">"Tardó un poco más de lo acordado en empezar, pero el trato al escribirle por dudas fue muy bueno."</div>
           </div>
           <span class="badge badge-good">
             <svg viewBox="0 0 20 20" fill="currentColor"><path d="M16.7 5.3a1 1 0 0 1 0 1.4l-7.4 7.4a1 1 0 0 1-1.4 0l-3.6-3.6a1 1 0 1 1 1.4-1.4l2.9 2.9 6.7-6.7a1 1 0 0 1 1.4 0z"/></svg>
@@ -94,7 +94,7 @@
         <div class="review-row">
           <div>
             <div class="review-meta">estefania.vip · hace 6 horas</div>
-            <div class="review-text">"Producto excelente, calidad excelente, entrega excelente, todo excelente de principio a fin."</div>
+            <div class="review-text">"Profesional excelente, trabajo excelente, precio excelente, todo excelente de principio a fin."</div>
             <div class="review-flag">⚠ Mismo patrón de alta y de horario que la cuenta anterior</div>
           </div>
           <span class="badge badge-warn">
@@ -111,15 +111,18 @@
   <section class="tight">
     <div class="wrap">
       <div class="reveal">
-        <h2>Ya no es un "nice to have"</h2>
+        <h2>El problema ya está documentado, no es una hipótesis</h2>
         <p class="lede">
-          En 2025 Mozilla cerró Fakespot, el proyecto que llevaba años intentando detectar reviews
-          falsas desde fuera, sin acceso a los datos de la plataforma ni un cliente dispuesto a
-          pagarlo. Mientras tanto la ley fue en la dirección contraria: la FTC en Estados Unidos
-          puede multar con hasta 53.000$ por infracción, el Reino Unido con la DMCC hasta el 10%
-          de la facturación global, y la Unión Europea con la DSA hasta el 6%. Las tres exigen lo
-          mismo: que la plataforma que aloja las reviews tome medidas razonables para detectarlas.
-          CheckGraph nace para ser esa medida.
+          En un marketplace de proveedores, la reseña es lo que decide quién se lleva el siguiente
+          cliente — y eso convierte cada perfil en un incentivo directo para inflar su valoración.
+          En plataformas de freelance se han documentado redes enteras de proveedores
+          intercambiándose reseñas falsas entre sí, y el patrón sigue vivo hoy. Intentar resolverlo
+          desde fuera no funciona: Mozilla cerró Fakespot en 2025 tras años sin acceso a los datos
+          de la plataforma ni un cliente dispuesto a pagarlo. Y la ley ya no lo deja como opcional —
+          la FTC en Estados Unidos multa con hasta 53.000$ por infracción, el Reino Unido con la
+          DMCC hasta el 10% de la facturación global, la Unión Europea con la DSA hasta el 6% —
+          las tres piden lo mismo: que la plataforma tome medidas razonables. CheckGraph es esa
+          medida, pensada para el marketplace, no para el comprador final.
         </p>
       </div>
     </div>
@@ -230,8 +233,8 @@
             </div>
           </div>
           <div>
-            <label for="web">Web o plataforma (opcional)</label>
-            <input id="web" name="web" type="text" placeholder="tuweb.com" />
+            <label for="web">Tu marketplace o directorio (opcional)</label>
+            <input id="web" name="web" type="text" placeholder="tumarketplace.com" />
           </div>
           <div>
             <button class="btn btn-primary" type="submit">Quiero acceso anticipado</button>
