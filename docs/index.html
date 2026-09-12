@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CheckGraph — Detección de reviews falsas y redes coordinadas</title>
+<meta name="description" content="CheckGraph analiza el texto y el comportamiento de las cuentas de tu plataforma para separar reviews genuinas de campañas coordinadas, con evidencia exportable." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="style.css" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='5' cy='6' r='2.6' fill='%234f7cff'/%3E%3Ccircle cx='19' cy='6' r='2.6' fill='%234f7cff'/%3E%3Ccircle cx='12' cy='18' r='2.6' fill='%234f7cff'/%3E%3Cline x1='5' y1='6' x2='19' y2='6' stroke='%234f7cff' stroke-width='1.6'/%3E%3Cline x1='5' y1='6' x2='12' y2='18' stroke='%234f7cff' stroke-width='1.6'/%3E%3Cline x1='19' y1='6' x2='12' y2='18' stroke='%234f7cff' stroke-width='1.6'/%3E%3C/svg%3E" />
+</head>
+<body>
+
+<div class="graph-bg" id="graph-bg" aria-hidden="true"></div>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="#top">
+      <svg class="mark" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="5" cy="6" r="2.4" fill="#4f7cff" />
+        <circle cx="19" cy="6" r="2.4" fill="#4f7cff" />
+        <circle cx="12" cy="18" r="2.4" fill="#4f7cff" />
+        <line x1="5" y1="6" x2="19" y2="6" stroke="#4f7cff" stroke-width="1.4" opacity="0.6" />
+        <line x1="5" y1="6" x2="12" y2="18" stroke="#4f7cff" stroke-width="1.4" opacity="0.6" />
+        <line x1="19" y1="6" x2="12" y2="18" stroke="#4f7cff" stroke-width="1.4" opacity="0.6" />
+      </svg>
+      CheckGraph
+    </a>
+    <a class="btn btn-primary" href="#acceso">Acceso anticipado</a>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="wrap">
+      <p class="eyebrow">Para plataformas con reviews propias</p>
+      <h1>Las reviews falsas ya no son solo un problema de reputación. Ahora es una obligación legal.</h1>
+      <p class="lede">
+        CheckGraph combina el análisis del texto con el comportamiento real de las cuentas de tu
+        plataforma para separar opiniones genuinas de campañas coordinadas — con un informe de
+        evidencia exportable, no con una etiqueta a ciegas.
+      </p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="#acceso">Solicitar acceso anticipado</a>
+        <a class="btn btn-ghost" href="#preview">Ver cómo funciona</a>
+      </div>
+    </div>
+
+    <div class="wrap">
+      <div class="preview-card reveal" id="preview">
+        <div class="preview-head">
+          <span>informe — comercio-ejemplo.com</span>
+          <span class="preview-dot"><span></span><span></span><span></span></span>
+        </div>
+
+        <div class="review-row">
+          <div>
+            <div class="review-meta">M. Alonso · hace 2 días</div>
+            <div class="review-text">"Pedimos dos veces y ambas llegó en el plazo indicado, sin sorpresas. Repetiré seguro."</div>
+          </div>
+          <span class="badge badge-good">
+            <svg viewBox="0 0 20 20" fill="currentColor"><path d="M16.7 5.3a1 1 0 0 1 0 1.4l-7.4 7.4a1 1 0 0 1-1.4 0l-3.6-3.6a1 1 0 1 1 1.4-1.4l2.9 2.9 6.7-6.7a1 1 0 0 1 1.4 0z"/></svg>
+            Genuina
+          </span>
+        </div>
+
+        <div class="review-row">
+          <div>
+            <div class="review-meta">carla_r92 · hace 6 horas</div>
+            <div class="review-text">"Increíble producto, superó todas mis expectativas, altamente recomendado para todos, el mejor de su categoría."</div>
+            <div class="review-flag">⚠ Cluster: 7 cuentas registradas la misma noche, texto con estructura casi idéntica</div>
+          </div>
+          <span class="badge badge-warn">
+            <svg viewBox="0 0 20 20" fill="currentColor"><path d="M10 2 1 18h18L10 2Zm0 5.5c.55 0 1 .45 1 1v3.5a1 1 0 1 1-2 0V8.5c0-.55.45-1 1-1ZM10 15a1.1 1.1 0 1 1 0-2.2 1.1 1.1 0 0 1 0 2.2Z"/></svg>
+            Sospechosa
+          </span>
+        </div>
+
+        <div class="review-row">
+          <div>
+            <div class="review-meta">j.moreno88 · hace 1 día</div>
+            <div class="review-text">"El envío tardó un poco más de lo esperado pero el trato al escribir a soporte fue muy bueno."</div>
+          </div>
+          <span class="badge badge-good">
+            <svg viewBox="0 0 20 20" fill="currentColor"><path d="M16.7 5.3a1 1 0 0 1 0 1.4l-7.4 7.4a1 1 0 0 1-1.4 0l-3.6-3.6a1 1 0 1 1 1.4-1.4l2.9 2.9 6.7-6.7a1 1 0 0 1 1.4 0z"/></svg>
+            Genuina
+          </span>
+        </div>
+
+        <div class="review-row">
+          <div>
+            <div class="review-meta">estefania.vip · hace 6 horas</div>
+            <div class="review-text">"Producto excelente, calidad excelente, entrega excelente, todo excelente de principio a fin."</div>
+            <div class="review-flag">⚠ Mismo patrón de alta y de horario que la cuenta anterior</div>
+          </div>
+          <span class="badge badge-warn">
+            <svg viewBox="0 0 20 20" fill="currentColor"><path d="M10 2 1 18h18L10 2Zm0 5.5c.55 0 1 .45 1 1v3.5a1 1 0 1 1-2 0V8.5c0-.55.45-1 1-1ZM10 15a1.1 1.1 0 1 1 0-2.2 1.1 1.1 0 0 1 0 2.2Z"/></svg>
+            Sospechosa
+          </span>
+        </div>
+      </div>
+      <p class="preview-caption">Vista previa ilustrativa del tipo de informe que genera CheckGraph — no es una ejecución real.</p>
+    </div>
+  </section>
+
+  <!-- Por qué ahora -->
+  <section class="tight">
+    <div class="wrap">
+      <div class="reveal">
+        <h2>Ya no es un "nice to have"</h2>
+        <p class="lede">
+          En 2025 Mozilla cerró Fakespot, el proyecto que llevaba años intentando detectar reviews
+          falsas desde fuera, sin acceso a los datos de la plataforma ni un cliente dispuesto a
+          pagarlo. Mientras tanto la ley fue en la dirección contraria: la FTC en Estados Unidos
+          puede multar con hasta 53.000$ por infracción, el Reino Unido con la DMCC hasta el 10%
+          de la facturación global, y la Unión Europea con la DSA hasta el 6%. Las tres exigen lo
+          mismo: que la plataforma que aloja las reviews tome medidas razonables para detectarlas.
+          CheckGraph nace para ser esa medida.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Más allá del texto -->
+  <section class="tight">
+    <div class="wrap">
+      <div class="reveal">
+        <h2>No nos quedamos en "esto lo escribió una IA"</h2>
+        <p class="lede">
+          Cualquiera genera hoy una review convincente en dos segundos con un modelo de lenguaje —
+          detectarla solo por el texto ya no basta. Por eso cruzamos esa señal con el
+          comportamiento real de las cuentas en tu plataforma: cuándo se registraron, con qué
+          ritmo, qué más han escrito. Los datos que ya genera tu propia web son la pieza que falta
+          para pasar de "esta review suena rara" a "estas siete cuentas se registraron la misma
+          noche y escriben igual".
+        </p>
+      </div>
+      <div class="triad">
+        <div class="triad-item reveal">
+          <div class="num">01</div>
+          <h3>Texto</h3>
+          <p>Detecta el estilo de escritura generado por los modelos de IA más recientes, no solo por generadores antiguos y reconocibles.</p>
+        </div>
+        <div class="triad-item reveal">
+          <div class="num">02</div>
+          <h3>Comportamiento de cuenta</h3>
+          <p>Ritmo de alta, horario de actividad y reutilización de patrones dentro de tu propia plataforma.</p>
+        </div>
+        <div class="triad-item reveal">
+          <div class="num">03</div>
+          <h3>Imagen completa</h3>
+          <p>Un cluster de cuentas coordinadas, con la evidencia que lo sostiene — no una etiqueta suelta.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Resultado real -->
+  <section class="tight">
+    <div class="wrap">
+      <div class="reveal">
+        <h2>Los números, sin maquillar</h2>
+        <p class="lede">
+          En pruebas contra generadores de IA que el modelo nunca había visto en entrenamiento,
+          CheckGraph identifica más de 8 de cada 10 reviews generadas por IA, manteniendo los
+          falsos positivos por debajo del 5%. Seguimos ampliando la cobertura a generadores más
+          antiguos y a más idiomas — preferimos decir esto con claridad antes que vender una
+          precisión que no podemos sostener.
+        </p>
+      </div>
+      <div class="stat-panel reveal">
+        <div class="stat-number">&gt;80<small>%</small></div>
+        <div>
+          <div style="font-weight:600; margin-bottom:4px;">de reviews de IA moderna detectadas</div>
+          <div style="color:var(--text-dim); font-size:0.9rem;">con menos de un 5% de falsos positivos, contra un generador nunca visto en entrenamiento.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Qué no te va a decir -->
+  <section class="tight">
+    <div class="wrap">
+      <div class="reveal">
+        <h2>Lo que CheckGraph no te va a decir</h2>
+        <p class="lede">Es una decisión de diseño, no algo que escondemos: es lo único defendible bajo RGPD y lo único que nos parece honesto ofrecer.</p>
+      </div>
+      <ul class="wont-list reveal">
+        <li>
+          <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10A8 8 0 1 1 2 10a8 8 0 0 1 16 0Zm-8-5a1 1 0 0 0-1 1v4a1 1 0 0 0 2 0V6a1 1 0 0 0-1-1Zm0 8.5a1.1 1.1 0 1 0 0 2.2 1.1 1.1 0 0 0 0-2.2Z" clip-rule="evenodd"/></svg>
+          No infiere de qué país es alguien ni su nacionalidad a partir de cómo escribe.
+        </li>
+        <li>
+          <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10A8 8 0 1 1 2 10a8 8 0 0 1 16 0Zm-8-5a1 1 0 0 0-1 1v4a1 1 0 0 0 2 0V6a1 1 0 0 0-1-1Zm0 8.5a1.1 1.1 0 1 0 0 2.2 1.1 1.1 0 0 0 0-2.2Z" clip-rule="evenodd"/></svg>
+          No identifica personas. Trabaja con cuentas y patrones, nunca con quién hay detrás.
+        </li>
+        <li>
+          <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10A8 8 0 1 1 2 10a8 8 0 0 1 16 0Zm-8-5a1 1 0 0 0-1 1v4a1 1 0 0 0 2 0V6a1 1 0 0 0-1-1Zm0 8.5a1.1 1.1 0 1 0 0 2.2 1.1 1.1 0 0 0 0-2.2Z" clip-rule="evenodd"/></svg>
+          No comprueba en qué otras webs tiene cuenta un usuario ni construye un perfil suyo fuera de tu plataforma.
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section id="acceso">
+    <div class="wrap">
+      <div class="form-panel reveal">
+        <h2>Sé de los primeros en probarlo</h2>
+        <p class="lede" style="margin-bottom:0;">Estamos cerrando los primeros pilotos. Déjanos tu email y te avisamos en cuanto haya hueco.</p>
+
+        <form class="contact" name="acceso-anticipado" method="POST" data-netlify="true" netlify-honeypot="empresa-web">
+          <input type="hidden" name="form-name" value="acceso-anticipado" />
+          <p hidden>
+            <label>No rellenar: <input name="empresa-web" /></label>
+          </p>
+
+          <div class="form-row">
+            <div>
+              <label for="nombre">Nombre</label>
+              <input id="nombre" name="nombre" type="text" required />
+            </div>
+            <div>
+              <label for="email">Email de empresa</label>
+              <input id="email" name="email" type="email" required />
+            </div>
+          </div>
+          <div>
+            <label for="web">Web o plataforma (opcional)</label>
+            <input id="web" name="web" type="text" placeholder="tuweb.com" />
+          </div>
+          <div>
+            <button class="btn btn-primary" type="submit">Quiero acceso anticipado</button>
+            <p class="form-note">Sin spam. Solo te escribimos cuando haya hueco para un piloto.</p>
+          </div>
+        </form>
+        <p class="form-success">Gracias — te escribiremos en cuanto haya hueco.</p>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>CheckGraph — <a href="mailto:contacto@checkgraph.dev">contacto@checkgraph.dev</a></span>
+    <span>En desarrollo activo. Detección de texto por IA validada; grafo de cuentas coordinadas en marcha.</span>
+  </div>
+</footer>
+
+<script src="script.js"></script>
+</body>
+</html>

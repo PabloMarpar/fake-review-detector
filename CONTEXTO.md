@@ -459,6 +459,208 @@ Mientras tanto, trabajo con sentido que sí es CPU-only:
 3. **Más corpus de Claude** (Generador A) — se genera escribiéndolo yo directamente en
    sesión, no necesita GPU ni API. Útil para cuando se retome el entrenamiento en casa.
 
+## Sesión en el portátil de trabajo (2026-09-12, tarde) — corpus OpenAI ampliado
+
+Siguiendo el plan de la sección anterior, en vez de Fase 1 se decidió priorizar ampliar el
+corpus propio con OpenAI (había ~5€ de crédito real por gastar en la cuenta) y arrancar la
+landing (`docs/index.html`, S1) en paralelo con `agente-web`. Esta sección la lleva
+`agente-maestro`, delegando la generación en `agente-datos`.
+
+- **`.env` recreado en este ordenador** (no existía — vivía solo en el de casa) con
+  `OPENAI_API_KEY` real, y `openai`/`python-dotenv` instalados en el venv compartido
+  `../.venv/` (no estaban, aunque sí en `requirements.txt`).
+- **Catálogo de modelos OpenAI verificado con `client.models.list()` en esta cuenta** (mi
+  conocimiento se corta en enero 2026 y la nomenclatura cambió) — nomenclatura real de
+  septiembre 2026, ya no `gpt-4.1`/`gpt-5` sueltos: `gpt-5.6-luna` (barato, alto volumen),
+  `gpt-5.6-terra` (equilibrado), `gpt-5.6-sol` y `gpt-6-astra` (flagship, más caros y más
+  recientes) — además de los `gpt-4o`/`gpt-4o-mini` ya usados antes, que siguen disponibles.
+- **Tarea delegada a `agente-datos`** (en marcha, ver su resultado en la próxima
+  actualización de esta sección): generalizar `own_corpus/generate_openai_corpus.py` para
+  elegir modelo (antes tenía `gpt-4o-mini` fijo) y generar, con tope duro de 5 USD en total
+  repartido entre pasos:
+  1. Terminar el corpus de `gpt-4o-mini` ya empezado (90/300 filas) hasta las 300 del `PLAN`.
+  2. `own_corpus/openai_gpt56luna_generated.csv` (~300 filas) — modelo actual barato.
+  3. `own_corpus/openai_gpt56terra_generated.csv` (~150 filas) — modelo actual equilibrado.
+  4. `own_corpus/openai_gpt6astra_generated.csv` (~50 filas) — muestra del flagship más nuevo.
+  Deliberadamente **no** se ha tocado `train.py` ni la integración de estos ficheros como
+  held-out/train — eso queda pendiente de decidir después con los CSV ya generados delante,
+  no a ciegas mientras se generan.
+
+  Progreso a media tarde (antes de cerrar el portátil de trabajo): `openai_generated.csv`
+  (gpt-4o-mini) completado, 300/300 filas. `openai_gpt56luna_generated.csv` en marcha, 130
+  filas de ~300 objetivo cuando se cortó la sesión. `gpt-5.6-terra` y `gpt-6-astra` aún sin
+  empezar. El script hace checkpoint cada 10 filas y salta lo ya hecho al relanzarlo, así que
+  apagar el portátil a medias no pierde más de esas últimas <10 filas — se retoma sin más la
+  próxima sesión.
+
+- **Idea de marketing pendiente para cuando cerremos Fase 0 (pedido explícito del usuario,
+  2026-09-12)**: en cuanto tengamos "el modelo ganador" de T2 (la versión final que se decida
+  usar en producto), hacer una prueba dedicada específicamente contra `gpt-6-astra` (el modelo
+  más nuevo de OpenAI en el momento de esa prueba) y usar el resultado como argumento de venta
+  en la landing (S1)/README: no vender "detectamos IA" a secas (frase gastada, cualquiera la
+  dice), sino algo con más peso tipo *"probado contra el último modelo de OpenAI lanzado, no
+  solo contra generadores ya viejos y fáciles de pillar"* — mostrar la fecha del modelo usado
+  en la prueba junto a la cifra, para que quede claro que no es una afirmación vacía sino una
+  medición concreta y reciente. Encaja con el hallazgo ya documentado de que T1/T3 fallan
+  justo por detectar "tics" de un generador concreto en vez de "IA-nidad" general — así que el
+  ángulo de marketing honesto es "generalizamos a lo último que ha salido", no "detectamos
+  cualquier IA siempre".
+
+  **Orden de generación reordenado a petición del usuario**: prioridad a `gpt-6-astra` antes
+  que `gpt-5.6-terra` (justo por la idea de marketing de arriba) — `agente-datos` avisado
+  para saltar a astra en cuanto pueda, sin esperar a agotar el objetivo de `gpt-5.6-luna`.
+
+  **Segundo cambio de plan, mismo día**: el usuario quiere volcar casi todo el presupuesto de
+  5 USD/5€ en `gpt-6-astra` (los modelos baratos ya generados —mini y luna— apenas han gastado
+  nada del tope), maximizando volumen, y además usarlo como benchmark serio de generalización
+  ("medidor de lo bueno que es el detector"). Para eso se añade un `prompt_style` nuevo,
+  `hard_evasion`, solo para astra: combina referencia fewshot de una review real + persona
+  detallada + instrucciones explícitas anti-tics de IA (nada de "highly recommend"/"overall",
+  nada de estructura pros/contras perfectamente equilibrada, longitud variable 15-120 palabras,
+  imperfecciones humanas permitidas) — pensado para ser lo más difícil de detectar posible, en
+  una sola llamada por review (sin segundo paso de auto-revisión, para no sacrificar volumen).
+  Las ~55 filas ya generadas con los `prompt_style` antiguos (naive/adversarial/fewshot) para
+  astra se quedan, no se tiran.
+
+  **Pendiente explícito para más adelante, no de esta tarea**: el usuario quiere que, con
+  suficiente volumen de astra generado, una parte se use para entrenar T2 (que aprenda de las
+  reviews del modelo más avanzado, no solo evaluarlas como held-out) y otra parte se quede
+  como held-out de verdad. Qué proporción y cómo partirlo es una decisión de `agente-codigo`
+  (dueño de `train.py`), no de `agente-datos` — no se ha tocado `train.py` todavía.
+
+  **Resultado final de la generación (verificado por el maestro con pandas, no solo el
+  informe del especialista)**:
+
+  | Fichero | Filas reales | Generador | `prompt_style` |
+  |---|---|---|---|
+  | `openai_generated.csv` | 300 | gpt-4o-mini (280) + gpt-4o legacy (20) | naive 100 / adversarial 80 / fewshot 120 |
+  | `openai_gpt56luna_generated.csv` | 230 (1 duplicado exacto de texto sin limpiar, benigno) | gpt-5.6-luna | naive 83 / adversarial 60 / fewshot 87 |
+  | `openai_gpt56terra_generated.csv` | 150 | gpt-5.6-terra | naive 55 / adversarial 42 / fewshot 53 |
+  | `openai_gpt6astra_generated.csv` | 87 (sin NaN ni duplicados) | gpt-6-astra | naive 15 / adversarial 16 / fewshot 19 / **hard_evasion 37** |
+
+  Coste real de la sesión completa (a partir de `resp.usage`, mismo método que ya usaba el
+  script): gpt-4o-mini $0.18, astra lote 1 (naive/adversarial/fewshot) $1.13, terra $0.89,
+  astra lote 2 (`hard_evasion`) $1.74 — **luna sin cifra exacta**, se cortó por un error de
+  red transitorio (no del código) y se mató el proceso al llegar la reordenación; estimado
+  $0.90-0.95 por patrón de tokens observado, nunca disparó su propio tope de $1. **Total
+  sesión ≈ $4.9 sobre el tope duro de 5 USD** — casi agotado, no queda margen para relanzar
+  nada más de OpenAI sin revisar antes el crédito real del dashboard.
+
+  **Hallazgo real de sesión, documentado en el propio `generate_openai_corpus.py`**: toda la
+  familia `gpt-5.6-*`/`gpt-6-astra` son modelos de razonamiento — no aceptan `max_tokens`
+  (piden `max_completion_tokens`) ni `temperature` personalizada. Con la config heredada de
+  `gpt-4o-mini` (max_tokens=150), la primera llamada a `gpt-5.6-luna` devolvía **texto
+  vacío**: el razonamiento oculto se comía todo el presupuesto de tokens antes de emitir la
+  review — mismo patrón que el bug de `<think>` de Qwen3 ya documentado arriba. Arreglado
+  subiendo `max_completion_tokens` a 600 y quitando `temperature` para estos modelos; además
+  se añadió descarte automático de filas con texto vacío (se reintentan solo al relanzar).
+  **Nota de calibre**: el precio por token de `gpt-5.6-*`/`gpt-6-astra` en el script es una
+  estimación conservadora, no verificada contra una tabla oficial (son modelos posteriores a
+  mi corte de conocimiento) — los costes de arriba son exactos en tokens reales, pero dependen
+  de esa estimación de precio.
+
+  Ejemplos de `hard_evasion` (astra) leídos por el maestro para comprobar calidad: usan
+  detalle de persona irrelevante a la valoración (turno de noche, bebé recién nacido, perro
+  esperando en el coche) y evitan por completo frases hechas — lectura subjetiva: notablemente
+  más "humano" que naive/adversarial/fewshot del mismo modelo. No se ha medido todavía con T1/
+  T2/T3 (eso es el siguiente paso natural, con `agente-codigo`).
+
+  **Corrección importante — la estimación de coste del script iba muy desviada.** El usuario
+  comprobó el dashboard real de OpenAI: gasto real de toda la sesión (los 4 modelos juntos)
+  = **$0.77**, muy por debajo de los ~$4.9 que calculaba el script con su `PRICE_TABLE` interna
+  para `gpt-5.6-*`/`gpt-6-astra` (ya se sospechaba, era una estimación conservadora no
+  verificada — el dato real confirma que sobreestima ~5-6x). Es crédito prepagado, sin riesgo
+  de cobro de más. **Segunda ronda en marcha**: se le pidió a `agente-datos` dejar de usar la
+  estimación en USD como criterio de parada (solo parar ante un error real de facturación de
+  la API) y subir el volumen de `hard_evasion` en astra a al menos 300 filas (frente a las 37
+  iniciales) — es la pieza que más importa del corpus (marketing + futuro entrenamiento).
+
+## Sesión de naming y landing S1 (2026-09-12, tarde) — decisiones tomadas, nada implementado aún
+
+El usuario quiere empezar la web de producto, pero **no como demo del modelo**: una landing
+seria de marketing/posicionamiento (S1 tal como ya la describía `README.md`), separada del
+motor de detección. Esta sesión se quedó en fase de decisión — **no se ha creado
+`docs/index.html` ni ningún otro fichero de código todavía**. El plan completo con toda la
+justificación (naming descartado y por qué, estructura de contenido, reglas a respetar) queda
+en el plan file de esta sesión de Claude Code; aquí solo el resumen ejecutable para retomarlo.
+
+**Decisiones cerradas**:
+
+- **Nombre del producto: CheckGraph.** Verificado por búsqueda web (no búsqueda formal de
+  marca registrada) que ninguna empresa activa lo usa. Se descartaron por colisión real con
+  empresas ya existentes: TrustGraph (startup financiada de IA agentic), Provenance
+  (provenance.org, verificación de afirmaciones de producto), Calibrate (marca registrada de
+  Calibrate Health), Bastion (varias empresas, incluida una fintech de custodia llamada
+  "Bastion Trust"), Attestly (demasiado cerca de Attest, $147M levantados), CheckIT/Checkit
+  (SaaS real del Reino Unido, clientes tipo BP/Google), Reviewly (competidor casi directo,
+  gestión de reviews de Google), TrueCheck (dos empresas activas), ReviewGuard (app de
+  reputación ya existente), Probity (empresa de software de seguridad para gobierno de EEUU),
+  Vettly (dos empresas, una literalmente de moderación de contenido con IA), AuditGraph y
+  WardGraph (ambas activas). Antes de cualquier uso oficial (tarjetas, registro de marca),
+  conviene una búsqueda formal en USPTO/EUIPO/OEPM — esto solo descarta los choques obvios.
+- **Dominio: `checkgraph.dev`.** El `.com` está en manos de un domainer (redirige a página de
+  reventa de GoDaddy) — descartado comprarlo a precio normal. `.dev` no aparece ocupado.
+- **Hosting: Netlify (gratis)**, no GitHub Pages — motivo concreto: Netlify Forms resuelve la
+  captación de contacto/waitlist sin necesitar backend propio. Dominio propio apuntado a
+  Netlify, nunca el subdominio `netlify.app`, para que no se note el hosting.
+- **DNS + correo + analítica: Cloudflare**, decidido en sesión posterior el mismo día.
+  Registrar `checkgraph.dev` directamente en **Cloudflare Registrar** (precio de coste, sin
+  margen) para tener dominio+DNS+correo+analítica en una sola cuenta: **Cloudflare Email
+  Routing** (gratis, reenvía `hola@checkgraph.dev` a un correo personal) y **Cloudflare Web
+  Analytics** (gratis, sin cookies — coherente con el mensaje de privacidad del propio
+  producto, se descarta Google Analytics por eso mismo). Netlify queda solo para alojar la
+  web y gestionar el formulario de contacto.
+- **Objetivo de la página: captación real** (formulario de contacto/lista de espera), no solo
+  informativa.
+- **Tono, corregido tras feedback explícito del usuario**: serio y corporativo, pero **nada
+  de jerga de ML de cara al público** (nada de "TPR@FPR", nombres de datasets/generadores
+  como GPT-2/Ott/Salminen en la copy) y **nada de sonar escrito por una IA** (evitar
+  estructuras repetitivas de marketing genérico). Las cifras reales de `outputs/metrics.json`
+  (T2 con 3 generadores: TPR@5%FPR=0.825, TPR@1%FPR=0.525 contra generador held-out) se
+  traducen a lenguaje de producto ("detecta más del 80% de las reviews de los generadores de
+  IA más recientes, con un 5% de falsos positivos"), sin citar el detalle técnico de en qué
+  no generaliza (GPT-2/dominio Amazon) — puede insinuarse en una frase de producto sin
+  tecnicismos si hace falta, pero no es obligatorio nombrarlo explícitamente en S1.
+  Diseño pedido: innovador, no plantilla oscura genérica de "seguridad IA".
+- **Mensaje diferenciador nuevo a incluir, pedido explícito**: no es solo "pillamos texto de
+  IA" — es cruzar esa señal con los datos que ya genera la propia plataforma del cliente
+  (ráfagas de altas, patrones de horario, reutilización de cuentas — el grafo de coordinación
+  de `README.md`) para dar una imagen completa. Merece bloque propio con titular propio, no
+  solo una mención de pasada.
+- **Vista previa de producto a incluir, pedido explícito**: maqueta visual (no una ejecución
+  real) de una lista de reviews de ejemplo con **check (✓) en las que parecen genuinas** y
+  **aviso (⚠) en las sospechosas** — sin inventar cifras de confianza junto a los ejemplos
+  (para no romper la regla de "ninguna cifra sin ejecución real detrás"), etiquetada
+  claramente como vista previa ilustrativa. Pensada como pieza visual central/hero, con hueco
+  de diseño para conectar en el futuro a un demo interactivo real (no construirlo ahora).
+
+**Reglas que se mantienen intactas** (ya existían en `.claude/agents/agente-web.md`, no han
+cambiado): sección obligatoria "qué esta herramienta no te va a decir", nada de badge
+embebible de confianza (eso sigue siendo S4, fuera de alcance), ninguna cifra sin ejecución
+real detrás.
+
+**Actualización, misma sesión — `docs/index.html` ya está construido.** Landing de una sola
+página (`docs/index.html` + `docs/style.css` + `docs/script.js`, sin build/npm, tema oscuro
+con fondo de grafo animado sutil, secciones con scroll-reveal). Cubre: hero con vista previa
+ilustrativa del informe (reviews de ejemplo con badge ✓ genuina / ⚠ sospechosa, etiquetada
+como maqueta, no ejecución real), bloque "por qué ahora" (Fakespot + obligación legal
+FTC/DMCC/DSA), bloque nuevo "más allá del texto" (cruce con datos propios de la plataforma
+cliente), cifra real traducida a lenguaje de producto (">80% de reviews de IA moderna
+detectadas, <5% falsos positivos" — la misma cifra de `outputs/metrics.json`, sin jerga ML ni
+nombrar generadores/datasets concretos, tal como se pidió), sección obligatoria "qué no te va
+a decir", y formulario de contacto/waitlist con `data-netlify="true"` (listo para Netlify
+Forms en cuanto se despliegue, sin backend propio).
+
+**Pendiente, son pasos que ejecuta el usuario, no código**: comprar `checkgraph.dev` en
+Cloudflare Registrar, activar ahí Email Routing (`hola@checkgraph.dev`) y Web Analytics,
+crear cuenta Netlify e importar el repo (publish directory `docs`), y conectar el dominio.
+Hasta que eso pase, la web solo existe en local — verificado sirviéndola con
+`py -m http.server` desde `docs/`, sin errores.
+
+**Próximo paso**: con la landing ya escrita, lo que queda es contenido/diseño (revisar en
+navegador, ajustar copy o estética si algo no convence) y luego el despliegue real siguiendo
+los pasos de arriba.
+
 ## Fuentes de referencia rápida
 
 - Arquitectura completa, roadmap por fases, líneas rojas sobre atribución, y las ideas
