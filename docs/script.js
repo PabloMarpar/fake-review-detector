@@ -18,7 +18,37 @@ document.addEventListener("DOMContentLoaded", () => {
 
   buildGraphBackground();
   wireContactForm();
+  initTimelineProgress();
 });
+
+function initTimelineProgress() {
+  const timelines = document.querySelectorAll(".timeline");
+  if (!timelines.length) return;
+
+  timelines.forEach((tl) => {
+    const bar = document.createElement("div");
+    bar.className = "timeline-progress";
+    tl.appendChild(bar);
+  });
+
+  const update = () => {
+    const viewportH = window.innerHeight;
+    timelines.forEach((tl) => {
+      const bar = tl.querySelector(".timeline-progress");
+      const rect = tl.getBoundingClientRect();
+      const start = viewportH * 0.9;
+      const end = viewportH * 0.35;
+      const span = rect.height + (start - end);
+      const scrolled = start - rect.top;
+      const pct = Math.max(0, Math.min(1, scrolled / span));
+      bar.style.height = pct * 100 + "%";
+    });
+  };
+
+  window.addEventListener("scroll", update, { passive: true });
+  window.addEventListener("resize", update);
+  update();
+}
 
 function buildGraphBackground() {
   const container = document.getElementById("graph-bg");

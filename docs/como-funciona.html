@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Cómo funciona CheckGraph: texto de IA + comportamiento de cuenta | CheckGraph</title>
+<meta name="description" content="CheckGraph cruza el análisis de texto generado por IA con el comportamiento de las cuentas de tu plataforma — ritmo de altas, horarios, reutilización de patrones — para detectar redes de proveedores coordinadas en marketplaces y plataformas freelance." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="style.css" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='5' cy='6' r='2.6' fill='%234f7cff'/%3E%3Ccircle cx='19' cy='6' r='2.6' fill='%234f7cff'/%3E%3Ccircle cx='12' cy='18' r='2.6' fill='%234f7cff'/%3E%3Cline x1='5' y1='6' x2='19' y2='6' stroke='%234f7cff' stroke-width='1.6'/%3E%3Cline x1='5' y1='6' x2='12' y2='18' stroke='%234f7cff' stroke-width='1.6'/%3E%3Cline x1='19' y1='6' x2='12' y2='18' stroke='%234f7cff' stroke-width='1.6'/%3E%3C/svg%3E" />
+</head>
+<body>
+
+<div class="aurora" aria-hidden="true"></div>
+<div class="graph-bg" id="graph-bg" aria-hidden="true"></div>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="index.html">
+      <svg class="mark" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="5" cy="6" r="2.4" fill="#4f7cff" />
+        <circle cx="19" cy="6" r="2.4" fill="#4f7cff" />
+        <circle cx="12" cy="18" r="2.4" fill="#4f7cff" />
+        <line x1="5" y1="6" x2="19" y2="6" stroke="#4f7cff" stroke-width="1.4" opacity="0.6" />
+        <line x1="5" y1="6" x2="12" y2="18" stroke="#4f7cff" stroke-width="1.4" opacity="0.6" />
+        <line x1="19" y1="6" x2="12" y2="18" stroke="#4f7cff" stroke-width="1.4" opacity="0.6" />
+      </svg>
+      CheckGraph
+    </a>
+    <nav class="nav-links">
+      <a href="por-que-ahora.html">Por qué ahora</a>
+      <a href="como-funciona.html">Cómo funciona</a>
+    </nav>
+    <a class="btn btn-primary" href="index.html#acceso">Acceso anticipado</a>
+  </div>
+</header>
+
+<main>
+  <section class="hero" style="padding-bottom: 20px;">
+    <div class="wrap article">
+      <a class="back-link" href="index.html">← Volver</a>
+      <p class="eyebrow">Cómo funciona</p>
+      <h1 style="max-width: 22ch;">No nos quedamos en "esto lo escribió una IA"</h1>
+      <p class="lede">
+        Cualquiera genera hoy una reseña convincente en dos segundos con un modelo de lenguaje —
+        detectarla solo por el texto ya no basta. Por eso CheckGraph cruza esa señal con el
+        comportamiento real de las cuentas de tu plataforma.
+      </p>
+    </div>
+  </section>
+
+  <section class="tight">
+    <div class="wrap article">
+      <div class="timeline">
+
+        <div class="timeline-item reveal">
+          <span class="step-num">01 — TEXTO</span>
+          <h2>Qué modelo lo escribió</h2>
+          <p>
+            La primera señal es el propio texto: un clasificador entrenado para reconocer el
+            estilo de los generadores de IA actuales, no solo de modelos antiguos y fáciles de
+            detectar. Esto importa porque muchas herramientas de detección se entrenan y se
+            venden con cifras conseguidas contra generadores de hace varios años — buenas en el
+            papel, casi inútiles contra lo que se usa de verdad hoy.
+          </p>
+        </div>
+
+        <div class="timeline-item reveal">
+          <span class="step-num">02 — COMPORTAMIENTO</span>
+          <h2>La huella de un patrón coordinado</h2>
+          <p>
+            La segunda señal no está en el texto, está en los datos que ya genera tu propia
+            plataforma: cuándo se registró una cuenta, con qué ritmo, en qué horario está activa,
+            qué más ha escrito. Una reseña aislada que "suena rara" es un indicio débil. Siete
+            cuentas que se registraron la misma noche, con el mismo patrón de horario y una
+            redacción casi idéntica, es evidencia — y esa evidencia solo aparece cuando se cruzan
+            las dos señales, nunca con el texto solo.
+          </p>
+        </div>
+
+        <div class="timeline-item reveal">
+          <span class="step-num">03 — EVIDENCIA</span>
+          <h2>Del indicio a la evidencia exportable</h2>
+          <p>
+            El resultado no es una etiqueta suelta tipo "esto es falso" — es un cluster de
+            cuentas coordinadas con la evidencia que lo sostiene, pensado para poder enseñarse: a
+            un proveedor al que se le retira una reseña, a un regulador que pregunta qué medidas
+            razonables habéis tomado, o a vuestro propio equipo antes de tomar una decisión.
+          </p>
+        </div>
+
+        <div class="timeline-item reveal">
+          <span class="step-num">04 — RESULTADO</span>
+          <h2>Los números, sin maquillar</h2>
+          <p>
+            En pruebas contra generadores de IA que el modelo nunca había visto en
+            entrenamiento, CheckGraph identifica más de 8 de cada 10 reseñas generadas por IA,
+            manteniendo los falsos positivos por debajo del 5%. Seguimos ampliando la cobertura a
+            generadores más antiguos y a más idiomas — preferimos decir esto con claridad antes
+            que vender una precisión que no podemos sostener.
+          </p>
+        </div>
+
+      </div>
+
+      <div class="article-cta">
+        <a class="btn btn-primary" href="index.html#acceso">Solicitar acceso anticipado</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>CheckGraph — <a href="mailto:contacto@checkgraph.dev">contacto@checkgraph.dev</a></span>
+    <span>En desarrollo activo. Detección de texto por IA validada; grafo de cuentas coordinadas en marcha.</span>
+  </div>
+</footer>
+
+<script src="script.js"></script>
+</body>
+</html>
