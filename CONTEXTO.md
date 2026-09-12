@@ -176,6 +176,26 @@ qwen2.5- es demasiado fácil de despistar sin aprender nada útil, o puede estar
 real junto con los tics). Hipótesis a comprobar en cuanto Qwen3-8B esté listo: con 3
 generadores de IA en train, ¿mejora sobre el 0.50, o se descarta también esta técnica como se
 descartó la fusión? Se documentará el resultado sea cual sea, no solo si sale bien.
+
+**Actualización — Qwen3-8B generado (500/500, 497 únicas)**. Bug real encontrado antes de
+generar el lote completo: Qwen3 razona (`<think>...</think>`) por defecto, y con
+`max_new_tokens=150` el pensamiento nunca llegaba a terminar — **cada generación de la
+primera prueba era 100% traza de razonamiento cortada, 0% review real** (confirmado
+manualmente: 26.7s por llamada, salida a medio pensar). Arreglado pasando
+`enable_thinking=False` en `apply_chat_template` (la propia plantilla de Qwen3 lo soporta) —
+baja a 6.6s por llamada y el texto sale limpio. Sin este fix, se habría generado un corpus
+entero de basura sin darnos cuenta hasta evaluarlo.
+
+**DeepSeek-R1-Distill-Llama-8B — objetivo reducido de 300 a 100 por tiempo real.** A
+diferencia de Qwen3, este modelo **siempre** razona, sin toggle para desactivarlo (confirmado
+por su documentación). Prueba manual: el pensamiento sí termina dentro de 350 tokens
+(`</think>` presente), pero tarda **~5.2 minutos por review** — 300 habrían tardado ~26h,
+inviable en una noche. Se lanzó con objetivo 100 (`--strip-think`, que descarta todo lo
+anterior a `</think>`) — a este ritmo son ~8-9h, así que probablemente no esté completo al
+despertar; se reanuda solo (mismo patrón de checkpoint que los demás generadores) si hace
+falta seguir después. Con lo que haya generado, aunque sean 20-40 reviews, ya sirve como
+segundo held-out junto a OpenAI — no hace falta esperar al objetivo completo para empezar a
+medir.
 - 🔴 **Hallazgo crítico de sesión — T1 y T3 evaluados contra el corpus propio
   (`python train.py eval_own_corpus`)**: **fallan casi por completo contra LLMs modernos.**
 
