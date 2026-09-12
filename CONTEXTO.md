@@ -186,6 +186,36 @@ manualmente: 26.7s por llamada, salida a medio pensar). Arreglado pasando
 baja a 6.6s por llamada y el texto sale limpio. Sin este fix, se habría generado un corpus
 entero de basura sin darnos cuenta hasta evaluarlo.
 
+**Conclusión de la cabeza adversarial (GRL) — descartada, con tres puntos de datos, no uno.**
+Con Qwen3-8B ya generado, se repitió el experimento con 3 generadores de IA en train
+(Claude+Qwen2.5+Qwen3) en vez de 2, y además se probó bajar la fuerza de la presión
+adversarial (`aux_weight`) por si 0.3 era demasiado agresivo:
+
+| Configuración | Held-out OpenAI TPR@5%FPR |
+|---|---|
+| T2 baseline (clasificador plano, sin cabeza adversarial) | **0.50** |
+| Adversarial, aux_weight=0.3, 2 generadores (Claude+Qwen2.5) | 0.043 |
+| Adversarial, aux_weight=0.3, 3 generadores (+Qwen3) | 0.063 |
+| Adversarial, aux_weight=0.1, 3 generadores | 0.075 |
+
+Tendencia consistente en la dirección esperada (más generadores ayuda un poco, menos presión
+adversarial ayuda un poco) pero la magnitud no se acerca ni de lejos al baseline — no es
+ruido de un solo experimento, son tres intentos razonables que convergen en la misma
+conclusión. **Se descarta esta técnica para el proyecto, igual que se descartó la fusión T1+T2+T3
+— T2 baseline (DeBERTa-v3-base, clasificador plano, sin cabeza adversarial) sigue siendo la
+mejor señal de texto medida hasta ahora.**
+
+Posible motivo, para quien retome esto más adelante (no investigado a fondo por tiempo):
+el clasificador de este experimento usa mean-pooling propio en vez del `ContextPooler`
+entrenado que trae DeBERTa por dentro (necesario para poder engancharle la cabeza auxiliar de
+generador a la misma representación) — es un cambio de arquitectura además del adversarial, no
+solo "adversarial sí/no" de forma aislada, así que parte de la caída podría venir de ahí y no
+solo de la técnica en sí. Y el paper original (arXiv 2604.13692) usa un método bastante más
+rico (doble cuello de botella + regularización cross-view + adaptación guiada por
+discriminador) — esta es una simplificación de una sola pieza de esa idea, no la
+reproducción completa, así que no generalizar bien no dice necesariamente que la idea
+del paper esté mal, solo que esta versión simplificada no basta.
+
 **DeepSeek-R1-Distill-Llama-8B — objetivo reducido de 300 a 100 por tiempo real.** A
 diferencia de Qwen3, este modelo **siempre** razona, sin toggle para desactivarlo (confirmado
 por su documentación). Prueba manual: el pensamiento sí termina dentro de 350 tokens

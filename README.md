@@ -141,9 +141,18 @@ Tres hallazgos, honestos y medidos, no supuestos:
    a un generador nuevo, y contaminan la única señal que sí generaliza. Se decidió T2 solo
    como señal de texto de esta fase tras medirlo, no por intuición.
 
+También se probó una arquitectura más sofisticada de T2 — una cabeza adversarial que intenta
+que el modelo deje de reconocer de qué generador viene un texto (inspirada en un método
+publicado en ACL 2026), con la idea de forzarlo a aprender "IA-nidad" genérica en vez de tics
+de Claude/Qwen concretos. Con tres configuraciones distintas probadas (más generadores en
+entrenamiento, menos presión adversarial) siempre quedó muy por debajo del T2 simple —
+**se descarta también**, con la misma disciplina que la fusión: probarlo y medirlo, no
+asumir que "más sofisticado" es "mejor".
+
 Detalle completo, incluidos los bugs de sesión que habría sido fácil dejar pasar sin darse
 cuenta (un modelo LightGBM corrompido por conversión de saltos de línea de git, DeBERTa-v3
-dando NaN en fp16), en `CONTEXTO.md`.
+dando NaN en fp16, Qwen3 generando puro razonamiento cortado en vez de reviews), en
+`CONTEXTO.md`.
 
 ## Perfilado de clusters ("granjas de bots")
 

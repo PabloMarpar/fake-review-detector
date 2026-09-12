@@ -67,19 +67,37 @@
     "tpr_at_5pct_fpr_held_out_generator_t2_only": 0.36666666666666664
   },
   "t2_adversarial_base": {
-    "n_train": 1866,
-    "n_val": 330,
+    "n_train": 2291,
+    "n_val": 405,
     "generators_in_train": [
       "claude",
       "human",
-      "qwen2.5"
+      "qwen2.5",
+      "qwen3"
     ],
-    "tpr_at_1pct_fpr_val": 1.0,
+    "tpr_at_1pct_fpr_val": 0.9939393939393939,
     "tpr_at_5pct_fpr_val": 1.0,
-    "n_held_out_openai": 70,
+    "n_held_out_openai": 80,
+    "tpr_at_1pct_fpr_openai": 0.0125,
+    "tpr_at_5pct_fpr_openai": 0.0625,
+    "tpr_at_1pct_fpr_salminen_2022_gpt2": 0.006783857390443179,
+    "tpr_at_5pct_fpr_salminen_2022_gpt2": 0.04194107452339688
+  },
+  "t2_adversarial_base_aux0.1": {
+    "n_train": 2291,
+    "n_val": 405,
+    "generators_in_train": [
+      "claude",
+      "human",
+      "qwen2.5",
+      "qwen3"
+    ],
+    "tpr_at_1pct_fpr_val": 0.9939393939393939,
+    "tpr_at_5pct_fpr_val": 1.0,
+    "n_held_out_openai": 80,
     "tpr_at_1pct_fpr_openai": 0.0,
-    "tpr_at_5pct_fpr_openai": 0.04285714285714286,
-    "tpr_at_1pct_fpr_salminen_2022_gpt2": 0.007378063877197326,
-    "tpr_at_5pct_fpr_salminen_2022_gpt2": 0.04050507551374102
+    "tpr_at_5pct_fpr_openai": 0.075,
+    "tpr_at_1pct_fpr_salminen_2022_gpt2": 0.009358752166377816,
+    "tpr_at_5pct_fpr_salminen_2022_gpt2": 0.052141619212676404
   }
 }

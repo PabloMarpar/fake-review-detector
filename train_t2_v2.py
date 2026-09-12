@@ -146,6 +146,7 @@ def main() -> None:
     parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--lr", type=float, default=2e-5)
     parser.add_argument("--weight-decay", type=float, default=0.01)
+    parser.add_argument("--aux-weight", type=float, default=AUX_LOSS_WEIGHT)
     args = parser.parse_args()
     batch_size = args.batch_size or (16 if args.model == "base" else 8)
 
@@ -195,7 +196,7 @@ def main() -> None:
             cls_logits, gen_logits = model(batch["input_ids"], batch["attention_mask"], grl_lambda)
             cls_loss = cls_loss_fn(cls_logits, batch["cls_labels"])
             gen_loss = gen_loss_fn(gen_logits, batch["gen_labels"])
-            (cls_loss + AUX_LOSS_WEIGHT * gen_loss).backward()
+            (cls_loss + args.aux_weight * gen_loss).backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
             scheduler.step()
@@ -227,7 +228,7 @@ def main() -> None:
         return np.array(scores)
 
     val_scores, val_y = _predict(val_df["text"].tolist()), val_df["label"].values
-    metric_key = f"t2_adversarial_{args.model}"
+    metric_key = f"t2_adversarial_{args.model}_aux{args.aux_weight}"
     metrics = {
         metric_key: {
             "n_train": len(train_df),
