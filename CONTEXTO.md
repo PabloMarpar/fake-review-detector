@@ -575,6 +575,42 @@ landing (`docs/index.html`, S1) en paralelo con `agente-web`. Esta sección la l
   la API) y subir el volumen de `hard_evasion` en astra a al menos 300 filas (frente a las 37
   iniciales) — es la pieza que más importa del corpus (marketing + futuro entrenamiento).
 
+  **Resultado final de la ronda (verificado por el maestro con pandas — sin NaN, 1 solo
+  duplicado benigno en luna, nada en el resto):**
+
+  | Fichero | Filas finales | `prompt_style` |
+  |---|---|---|
+  | `openai_generated.csv` (gpt-4o-mini/gpt-4o) | 300 | naive 100 / adversarial 80 / fewshot 120 |
+  | `openai_gpt56luna_generated.csv` | 230 | naive 83 / adversarial 60 / fewshot 87 |
+  | `openai_gpt56terra_generated.csv` | 150 | naive 55 / adversarial 42 / fewshot 53 |
+  | **`openai_gpt6astra_generated.csv`** | **610** | naive 15 / adversarial 16 / fewshot 19 / **hard_evasion 560** |
+
+  **El crédito de OpenAI se agotó de verdad al final** (`insufficient_quota` /
+  `credit_balance_exhausted`, "You have no credits remaining") — el script lo capturó, guardó
+  checkpoint limpio y paró sin perder filas. Es crédito compartido a nivel de cuenta: **ahora
+  mismo cualquier llamada a cualquier modelo de esta cuenta fallará** hasta que se recargue.
+  No relanzar `generate_openai_corpus.py` sin comprobar antes el dashboard.
+
+  **Paralelización aplicada con éxito** (pedida por el usuario al ver que iba lento):
+  `ThreadPoolExecutor` con 12 workers, oleadas de 36 peticiones para poder detectar el corte de
+  facturación entre oleadas sin cancelar peticiones en vuelo, `threading.Lock` protegiendo la
+  lista compartida y el checkpoint — **~91 filas/min frente a ~7-8 filas/min en serie (~12x)**.
+  Dos bugs reales corregidos durante esta ronda, documentados en el propio script:
+  1. Condición de carrera en la detección de "este modelo no admite `temperature` propia": con
+     varios hilos a la vez, solo el primero marcaba el modelo como "sin temperature" y el
+     resto relanzaba el error en vez de reintentar — arreglado quitando esa condición de
+     carrera y pre-sembrando el set con los 4 modelos `gpt-5.6-*`/`gpt-6-astra` ya confirmados.
+  2. **Dos incidentes más de procesos duplicados** al usar `run_in_background: true` explícito
+     del harness — parece un problema estructural de esa combinación en esta máquina, no del
+     comando en sí. Solución que funcionó: dejar de pedir `run_in_background` explícito y
+     ejecutar en primer plano con timeout alto (se promueve solo a background si tarda,
+     sin duplicarse). **Nota para cualquier ejecución larga futura en esta máquina**: vigilar
+     con `Get-CimInstance Win32_Process` (más fiable que `tasklist`/`ps aux` en este Git Bash)
+     si aparecen dos PIDs con el mismo `CommandLine` y misma `CreationDate` exacta.
+
+  Pendiente de siempre: decidir con `agente-codigo` qué parte de estos 610 (sobre todo los 560
+  `hard_evasion`) va a train de T2 y qué parte se queda como held-out real — no tocado aún.
+
 ## Sesión de naming y landing S1 (2026-09-12, tarde) — decisiones tomadas, nada implementado aún
 
 El usuario quiere empezar la web de producto, pero **no como demo del modelo**: una landing
