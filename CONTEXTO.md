@@ -732,6 +732,45 @@ hablarle directamente a ese público (eyebrow, meta title/description para SEO, 
 "por qué ahora" con el ángulo de proveedores compitiendo por reseñas, no solo el argumento
 regulatorio genérico).
 
+## Arranque de Fase 1 (2026-09-13) — primer dataset de grafo integrado
+
+El usuario pidió arrancar la Fase 1 (grafo + coordinación de cuentas) desde el portátil de
+trabajo (sin GPU, no es un problema para esto). `agente-maestro` investigó la fuente de datos
+antes de delegar, porque cambiaba el diseño de `features_graph.py`:
+
+- **Yelp-NYC/Yelp-ZIP (Rayana & Akoglu), la fuente "oficial" del roadmap, no tiene descarga
+  automatizable**: la página de ODDS (Stony Brook,
+  `https://odds.cs.stonybrook.edu/yelpnyc-dataset/`) dice literalmente "para obtener el
+  dataset con ground truth, escribe un email a `srayana@cs.stonybrook.edu`" — sin URL directa,
+  sin plazo garantizado. El usuario está mandando ese email por su cuenta, en paralelo; si
+  llega respuesta, ese dataset sí trae texto completo y habrá que revisar si migrar.
+- **Decisión tomada con el usuario mientras tanto**: arrancar ya con **Yelp-Chi preprocesado**,
+  distribuido sin gate en el repo de CARE-GNN (Dou et al., CIKM 2020,
+  `https://github.com/YingtongDou/CARE-GNN`, `data/YelpChi.zip`) — verificado por el maestro
+  con una descarga real (no solo por búsqueda) que es de acceso libre, sin cuenta ni email.
+- **Delegado a `agente-datos`, completado**: `data.py` tiene ahora `load_yelpchi_graph_dataset()`.
+  Devuelve `net_rur`/`net_rtr`/`net_rsr` (tres grafos homogéneos review-review de 45.954×45.954:
+  mismo usuario / mismo negocio+rating+mes / mismo negocio+rating), `net_homo` (unión booleana
+  de las tres, no documentada originalmente — verificado por el especialista que es exactamente
+  esa unión), `features` (45.954×32, ya vectorizadas por los autores de CARE-GNN, no propias) y
+  `label` (0=genuina/1=fraude, 39.277/6.677 reales). Verificado también por el maestro
+  ejecutando la función de nuevo tras la entrega: carga sin errores, dimensiones consistentes.
+  `scipy` añadida a `requirements.txt` (antes solo transitiva).
+- **Limitación real que condiciona el diseño de `features_graph.py`, no disimulada**: este
+  Yelp-Chi preprocesado **no trae el texto original de la review** — solo grafo + features
+  numéricas ya calculadas + etiqueta. Sirve para Nivel A del perfilado (estructural/temporal:
+  Louvain, burst detection, comparación contra SpEagle/CARE-GNN) pero **no** para fusionar con
+  T2 (texto) ni para Nivel C (near-duplicates de texto). Además, 45.954 nodos reales frente a
+  los ~67.395 que reporta habitualmente la literatura sobre Yelp-Chi — el preprocesado de
+  CARE-GNN filtra el dataset original y no documenta el criterio exacto; tratar 45.954 como el
+  tamaño real de esta fuente, no como bug de carga.
+
+**Próximo paso de Fase 1**: con el dataset de grafo ya cargable, escribir `features_graph.py`
+(proyección/grafo ya viene dado por `net_rur`/`net_rtr`/`net_rsr`/`net_homo`, así que el
+trabajo real es clustering Louvain + burst detection + comparación contra el AUC publicado de
+SpEagle/CARE-GNN sobre este mismo dataset) y después `profile_cluster.py` (Nivel A, que sí es
+validable aquí; Nivel B solo si llega Yelp-NYC/ZIP con fecha de creación de cuenta).
+
 ## Fuentes de referencia rápida
 
 - Arquitectura completa, roadmap por fases, líneas rojas sobre atribución, y las ideas
