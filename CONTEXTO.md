@@ -707,9 +707,15 @@ a domicilio, alquiler vacacional independiente, etc.)** — no e-commerce grande
 esto in-house o usan Trustpilot/Bazaarvoice) ni review-sites tipo G2/Glassdoor (equipo interno
 propio, muy cerrado a proveedores externos). Motivo: el incentivo a hacer trampa es directo (el
 proveedor con más 5 estrellas se lleva el siguiente trabajo), normalmente no tienen equipo de
-datos propio, y hay evidencia real y reciente del problema (WIRED documentó en 2023 redes de
-proveedores intercambiándose reseñas falsas en plataformas de freelance tipo Fiverr, sigue
-activo en 2026). Además, en español el SEO de "detectar reseñas falsas" está ocupado solo por
+datos propio, y hay evidencia real del problema — **corrección de una sesión posterior**: la
+cita original a "WIRED 2023" no se pudo verificar al comprobarla de verdad, se ha sustituido en
+la web por dos casos sí comprobados: Amazon demandó en 2015 a más de 1.100 vendedores de
+reseñas falsas en Fiverr, y Trustpilot destapó en 2016 una red de 83 perfiles de Fiverr con
+texto/fotos repetidas (mismo operador, varias cuentas). Sirven para sostener el patrón general
+(redes coordinadas de cuentas vendiendo/intercambiando reseñas falsas), no para afirmar que el
+intercambio recíproco *dentro* del propio marketplace esté documentado con esa misma precisión
+— eso se presenta en la web como variante lógica del patrón, no como hecho citado aparte.
+Además, en español el SEO de "detectar reseñas falsas" está ocupado solo por
 contenido de consumidor (Newtral, Redeszone...), nadie posicionado con contenido dirigido al
 dueño del marketplace — hueco de SEO real, no solo de producto.
 
