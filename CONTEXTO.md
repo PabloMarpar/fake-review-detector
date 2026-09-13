@@ -733,10 +733,73 @@ usuario las mete y me pasa los números para afinar el enfoque):
 - Inglés: "fake review detection software marketplace", "review fraud detection platform
   providers", "fake reviews freelance marketplace".
 
-**Próximo paso**: con el vertical ya decidido, se reescribe la copy de `docs/index.html` para
-hablarle directamente a ese público (eyebrow, meta title/description para SEO, y la sección
-"por qué ahora" con el ángulo de proveedores compitiendo por reseñas, no solo el argumento
-regulatorio genérico).
+**Próximo paso**: ✅ hecho, ver sesión de abajo — copy de `docs/index.html` reescrita para el
+vertical, dominio conectado, rediseño y SEO técnico completados.
+
+## Sesión de lanzamiento real de la web (2026-09-13) — dominio, rediseño, SEO y blog
+
+Con el vertical ya decidido, esta sesión cerró todo lo que quedaba pendiente de la landing y la
+puso de verdad en producción, no solo en local.
+
+**Dominio y hosting, en producción de verdad**: `checkgraph.dev` comprado en Cloudflare
+Registrar, conectado a Netlify (registro `A` a `75.2.60.5` + `CNAME` de `www` al subdominio de
+Netlify, ambos en modo "DNS only" para no interferir con la emisión del certificado). Netlify
+verificó el DNS y emitió el HTTPS solo — **`https://checkgraph.dev` funciona en producción,
+verificado con curl, no solo "debería funcionar"**. Cloudflare Email Routing
+(`contacto@checkgraph.dev` reenviado a correo personal) y Web Analytics activados. Bug de
+despliegue real encontrado y corregido por el camino: Netlify detectaba `requirements.txt` en la
+raíz e intentaba instalar `torch`/`transformers` como si fuera parte del build de una web
+estática — arreglado con `netlify.toml` (`base = "docs"`) para que ni lo vea.
+
+**Copy reescrita para el vertical** (marketplaces/directorios de proveedores): eyebrow, H1 y
+meta title/description de las tres páginas apuntando a esa audiencia y a las keywords ya
+decididas, sección "por qué ahora" reescrita con el ángulo de proveedores compitiendo por
+reseñas antes que el argumento regulatorio en solitario.
+
+**Rediseño de estructura y visual, con un intento descartado por el camino** (documentado
+porque el porqué importa): la landing original tenía las secciones largas ("por qué ahora",
+"más allá del texto") como texto corrido en la misma página — el usuario pidió dividirlo en
+páginas propias (`docs/por-que-ahora.html`, `docs/como-funciona.html`) con solo un resumen +
+botón en la home, mejor también para SEO long-tail. Primer intento de hacer el resultado menos
+"plano" fue **tarjetas flotantes con ligera rotación — rechazado explícitamente por el usuario**
+("lo veo demasiado forzado... no lo veo nada moderno"). Sustituido por lo que sí gustó: una
+**línea de tiempo vertical** (nodos conectados por una línea que se rellena con el scroll,
+numeración editorial tipo "01 — EL PATRÓN") más un **fondo "aurora"** (dos manchas de color
+difuminadas en movimiento lento, estilo Linear/Vercel) detrás de todas las páginas. Aprendizaje
+para futuras piezas de diseño en este proyecto: preguntar por 2-3 direcciones concretas con
+preview antes de implementar a ciegas una segunda vez.
+
+**SEO técnico añadido**: `sitemap.xml` + `robots.txt`, `canonical` + Open Graph/Twitter Card por
+página, JSON-LD `Organization` en la home. Pendiente real, no resuelto todavía: no hay `og:image`
+(necesitaría un diseño gráfico propio, no solo código).
+
+**Google Search Console**: propiedad `checkgraph.dev` verificada (DNS), sitemap enviado,
+indexación de la home solicitada manualmente ("Indexing requested" confirmado). No hay conector
+de Search Console entre las herramientas disponibles — el flujo de trabajo es que el usuario
+pega capturas de pantalla y se interpretan aquí, no hay acceso directo a la cuenta.
+
+**Blog lanzado**: `docs/blog/` con página índice y el primer post, **"Anillos de reseñas falsas
+entre proveedores en plataformas freelance"**. Cadencia acordada: 1 post cada 2 semanas
+(constancia sostenida importa más que frecuencia alta para una web nueva sin autoridad todavía).
+Calendario de temas para los siguientes posts, en orden:
+1. ~~Anillos de reseñas falsas entre proveedores~~ ✅ publicado.
+2. FTC/DMCC/DSA comparadas: qué exige cada normativa a un marketplace.
+3. Por qué Fakespot no consiguió resolver las reseñas falsas (y qué hace falta para lograrlo).
+4. Qué señales usa un sistema de detección de reseñas falsas (refuerza `como-funciona.html`).
+
+**Corrección real de honestidad, no cosmética**: el primer borrador del post citaba "una
+investigación de WIRED de 2023" sobre estas redes — al pedir enlazar la fuente de verdad, no se
+pudo verificar que existiera tal artículo. Sustituido por dos casos sí comprobados y enlazados:
+la demanda de Amazon (2015) contra más de 1.100 vendedores de reseñas falsas en Fiverr
+(TechCrunch), y la red de 83 perfiles que destapó Trustpilot (2016, mismo operador con varias
+cuentas). El intercambio recíproco *dentro* del propio marketplace se presenta en el post como
+variante lógica del mismo patrón, no como un hecho con esa misma cita exacta detrás — para no
+repetir el error de afirmar más de lo que la fuente real sostiene.
+
+**Estado real ahora mismo**: la web está en producción, indexación solicitada, un post de blog
+publicado. Pendiente: esperar a que Google indexe de verdad (días), escribir el segundo post
+cuando toque, y considerar visibilidad directa (Product Hunt, contacto con marketplaces de la
+vertical) en paralelo, porque el SEO de posicionamiento real es cosa de meses, no de esta sesión.
 
 ## Arranque de Fase 1 (2026-09-13) — primer dataset de grafo integrado
 
@@ -776,6 +839,47 @@ antes de delegar, porque cambiaba el diseño de `features_graph.py`:
 trabajo real es clustering Louvain + burst detection + comparación contra el AUC publicado de
 SpEagle/CARE-GNN sobre este mismo dataset) y después `profile_cluster.py` (Nivel A, que sí es
 validable aquí; Nivel B solo si llega Yelp-NYC/ZIP con fecha de creación de cuenta).
+
+### Yelp Open Dataset — descartado como fuente de entrenamiento, por licencia
+
+El usuario propuso descargar el Yelp Open Dataset (oficial, 7M reviews, con fecha de alta de
+cuenta — permitiría validar Nivel B) para entrenar y "luego no usarlo más". Investigado por el
+maestro: los términos de uso reales (`Yelp Dataset Terms of Use`, actualizados 2023) definen
+"uso académico" como actividades de organizaciones sin ánimo de lucro/gobierno/educativas,
+**no realizadas con fines de lucro ni destinadas a producir productos/servicios comerciales** —
+uso comercial expresamente prohibido. Como CheckGraph es un producto con intención comercial,
+la finalidad misma de la prueba (aunque se borre el fichero después) cae fuera de lo permitido
+— borrar el CSV no deshace el propósito con el que se usó. **Decisión: no se descarga ni se usa
+para entrenar nada del pipeline de producto.** Podría servir en el futuro solo para prototipar
+en local sin que ningún artefacto derivado (pesos, features, umbrales) llegue a `train.py`/
+`predict.py`/producto — no se ha hecho ni se ha decidido hacer eso todavía.
+
+## Segundo dataset de grafo — Amazon (CARE-GNN/PC-GNN), 2026-09-13
+
+Con Yelp-Chi ya integrado, se buscó un dataset hermano para tener más volumen/diversidad de
+grafo por si el email a Yelp-NYC/ZIP nunca llega. Encontrado y delegado a `agente-datos`,
+completado y verificado por el maestro ejecutándolo de nuevo:
+
+- **Fuente**: `https://data.dgl.ai/dataset/FraudAmazon.zip` (hosting oficial de DGL/AWS, mismo
+  patrón que Yelp-Chi) — grafo usuario-usuario (fraude en reviews de producto, no de negocio),
+  de Dou et al. (CIKM 2020 CARE-GNN / WWW 2021 PC-GNN).
+- **`data.py` tiene ahora `load_amazon_graph_dataset()`**: `net_upu`/`net_usu`/`net_uvu`
+  (11.944×11.944, binarias), `features` (11.944×25, **no normalizadas** a diferencia de las de
+  Yelp-Chi — min=-1.0, max=5525.0, cuidado si se combinan ambos datasets en el mismo pipeline
+  sin renormalizar), `label` (0=genuina/1=fraude, 11.123/821 reales, 6,9% positivos — este
+  conteo sí coincide con lo publicado, a diferencia de la discrepancia de tamaño de Yelp-Chi).
+- **Hallazgo real distinto al de Yelp-Chi**: aquí la clave `homo` del `.mat` **no** es la unión
+  booleana exacta de `net_upu`/`net_usu`/`net_uvu` (sí lo era en Yelp-Chi) — comprobado con
+  ~2M aristas de diferencia en cada sentido: expuesta tal cual en `net_homo`, sin asumir
+  equivalencia.
+- Misma limitación que Yelp-Chi: sin texto de review, solo grafo+features+etiqueta — Nivel A
+  del perfilado, no fusión con T2 ni Nivel C.
+- `requirements.txt` sin cambios (`scipy` ya cubría ambos).
+
+**En marcha en paralelo, sin revisar todavía por el maestro**: `agente-codigo` está escribiendo
+`features_graph.py` (Louvain sobre el grafo de Yelp-Chi, evaluación honesta contra `label`,
+comparación con salvedades frente a SpEagle/CARE-GNN) — pendiente de resultado y de decidir si
+se aplica también sobre Amazon una vez validado el enfoque en Yelp-Chi.
 
 ## Fuentes de referencia rápida
 
