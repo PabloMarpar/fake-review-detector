@@ -609,6 +609,45 @@ footer .wrap {
   padding-left: 40px;
 }
 
+/* Blog listing */
+.post-list {
+  display: grid;
+  gap: 20px;
+}
+
+.post-card {
+  display: block;
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 28px 32px;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+.post-card:hover {
+  border-color: var(--accent-dim);
+  transform: translateY(-2px);
+}
+
+.post-date {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--text-dimmer);
+  margin-bottom: 10px;
+}
+
+.post-card h2 {
+  margin: 0 0 10px;
+  font-size: 1.2rem;
+}
+
+.post-card p {
+  color: var(--text-dim);
+  font-size: 0.96rem;
+  margin: 0;
+}
+
 @media (max-width: 640px) {
   .timeline { padding-left: 28px; }
   .timeline::before { left: 3px; }
