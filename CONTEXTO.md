@@ -1900,6 +1900,39 @@ para poder ejecutarlo él mismo en Colab.
 **No ejecutado todavía en GPU real** — pendiente de que el usuario lo corra en Colab. Tiempo
 estimado (extrapolado, no cronometrado en T4 real): Parte A ~20-35 min, Parte B ~10-30 min.
 
+## Fase 2 (agregación de vecindario sobre árboles) — arrancada y puesta en pausa (2026-09-15)
+
+El usuario pidió empezar la Fase 2 mientras el notebook de la Fase 1 (`bwgnn_v2.ipynb`) corre
+en Colab, y luego pidió pararla antes de ejecutar nada. Estado real, para retomar sin perder el
+hilo:
+
+- **`features_neighborhood.py` (fichero nuevo) — escrito pero NUNCA ejecutado ni verificado.**
+  A diferencia del resto del código de este proyecto, aquí **no se ha corrido ni una sola vez**
+  — nada de lo que sigue está confirmado con datos reales, es diseño sin probar.
+- Implementa la técnica de **GADBench** (NeurIPS 2023, arXiv 2306.12251): agregar
+  (media/máximo/desviación estándar/tamaño, todo **leave-one-out**) las features de los vecinos
+  de cada nodo en cada relación, y dárselo a un árbol (LightGBM) junto con las features propias.
+  Label-free por construcción — agrega features, nunca etiquetas.
+- **Único dato verificado de esta sesión, con código real ejecutado**: antes de escribir el
+  módulo se comprobó si `net_rur`/`net_rtr`/`net_rsr` de **YelpChi** (las precalculadas por
+  CARE-GNN, no las de Yelp-NYC) son cliques disjuntos exactos, igual que ya se sabía de
+  Yelp-NYC. Resultado real (`verify_clique_relation` sobre las tres relaciones): **`net_rur` y
+  `net_rsr` sí son cliques exactos (0% de discrepancia), pero `net_rtr` NO lo es (95,07% de los
+  nodos con grado distinto al esperado de un clique)** — la relación temporal de CARE-GNN se
+  construye de otra forma, no investigada más allá de constatar que no es un clique. Por eso
+  `features_neighborhood.py` implementa dos caminos: `neighbor_agg_groupby` (rápido, para
+  relaciones clique) y `neighbor_agg_sparse` (general, vía matrices sparse, para las que no lo
+  son) — necesarios los dos para YelpChi, solo el primero hace falta para Yelp-NYC (sus tres
+  relaciones sí son cliques, ya verificado en sesiones anteriores).
+- Pensado para reutilizar `data_bundles/yelpnyc_bundle.npz` (ya construido para la Fase 1) en
+  vez de recalcular las 24 features de Yelp-NYC desde cero.
+- **Pendiente, en orden, cuando se retome** (nada de esto se ha hecho): (1) correr
+  `python features_neighborhood.py yelpchi` y comparar el delta de AP contra el ~+7 puntos de
+  AUPRC que mide GADBench (no perseguir el valor absoluto, el protocolo es distinto); (2) si el
+  delta aparece, correr `python features_neighborhood.py yelpnyc` con protocolo estricto
+  (split agrupado por reviewer, ya implementado en el módulo) y comparar contra el 0,8448/0,3866
+  de referencia; (3) solo entonces decidir si esta vía sustituye o complementa a BWGNN (Fase 1).
+
 ## Fuentes de referencia rápida
 
 - Arquitectura completa, roadmap por fases, líneas rojas sobre atribución, y las ideas
