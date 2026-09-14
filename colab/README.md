@@ -6,18 +6,33 @@ Esta carpeta contiene el trabajo que necesita GPU y que, mientras el ordenador d
 | Notebook | Qué hace | Tiempo en T4 |
 |---|---|---|
 | `bwgnn_yelpchi.ipynb` | Entrena **BWGNN** (Beta Wavelet GNN, ICML 2022) sobre Yelp-Chi y lo compara con un MLP sin grafo, un GCN paso-bajo y las referencias que ya tiene el proyecto | **~7–20 min** |
+| `bwgnn_v2.ipynb` | **Parte A**: mejora BWGNN hetero sobre Yelp-Chi (más épocas con early stopping real, búsqueda de hiperparámetros, ensemble de semillas) partiendo del 0,9120 AUC / 0,6927 AP ya medido. **Parte B**: porta BWGNN hetero a **Yelp-NYC** (359.052 reviews, el dataset real del producto) — antes inviable por memoria, resuelto con un truco de agregación exacta por scatter | **~30–65 min** |
 
-## Cómo ejecutarlo (5 pasos, sin depurar nada)
+## `bwgnn_v2.ipynb` — cómo ejecutarlo (5 pasos, sin depurar nada)
+
+Es el notebook a correr ahora mismo. Mismo procedimiento que el anterior:
 
 1. Abre <https://colab.research.google.com> y entra con tu cuenta de Google.
-2. `Archivo` → `Subir cuaderno` → arrastra `bwgnn_yelpchi.ipynb`.
-   (Alternativa: `Archivo` → `Abrir cuaderno` → pestaña `GitHub` → pega la URL del repo
-   y elige el fichero, si ya lo has pusheado.)
+2. `Archivo` → `Abrir cuaderno` → pestaña `GitHub` → pega la URL del repo
+   (`PabloMarpar/fake-review-detector`) → elige `colab/bwgnn_v2.ipynb`.
+   (Alternativa: `Archivo` → `Subir cuaderno` si lo tienes descargado a mano.)
 3. **Activa la GPU**: `Entorno de ejecución` → `Cambiar tipo de entorno de ejecución` →
-   en `Acelerador por hardware` elige **`T4 GPU`** → `Guardar`.
+   `T4 GPU` → `Guardar`.
 4. `Entorno de ejecución` → `Ejecutar todo`.
-5. Al terminar, el navegador descarga solo un fichero **`bwgnn_yelpchi_results.json`**.
-   Ese es el entregable: pásamelo de vuelta y lo integro en el repo.
+5. Al terminar, el navegador descarga **`bwgnn_v2_results.json`**. Ese es el entregable:
+   pásamelo de vuelta (o solo los números que salgan) y lo incorporo al proyecto.
+
+**No hace falta subir ni descargar ningún dato a mano**: la Parte A descarga `YelpChi.zip`
+igual que el notebook anterior, y la Parte B descarga `data_bundles/yelpnyc_bundle.npz`
+(12 MB, las 24 features de Yelp-NYC ya calculadas y empaquetadas) directamente del repo. Si
+la descarga automática del bundle falla (por ejemplo, si el fichero cambió y aún no está
+pusheado), el notebook lo dice y basta con subir `yelpnyc_bundle.npz` a mano al panel de
+archivos de la izquierda.
+
+Este notebook se ha probado de punta a punta en CPU local con datos sintéticos antes de
+subirlo (mismo código, parámetros reducidos) para detectar errores de antemano — no debería
+hacer falta depurar nada en Colab, pero si algo falla, la sección "Si algo va mal" de abajo
+también aplica a este notebook.
 
 La **primera celda comprueba que hay GPU** y lo dice en grande si no la hay. Si ves el aviso,
 vuelve al paso 3 antes de seguir: en CPU funciona igual, pero pasa de ~10-15 minutos a unas
@@ -104,6 +119,27 @@ compara automáticamente al final:
 Si la implementación del notebook se queda a más de 5 puntos de AUC por debajo, lo dice en
 grande: en ese caso el sospechoso es la implementación, no el dataset.
 
+## Qué pregunta responde `bwgnn_v2.ipynb`
+
+Dos, una por parte:
+
+- **Parte A**: en la sesión anterior, `best_epoch` fue 196 de 200 en BWGNN hetero — el modelo
+  seguía mejorando cuando se acabó el entrenamiento. ¿Cuánto hay en la mesa si se entrena más
+  (con early stopping real) y se afinan `wavelet_order`/`hidden`/`lr`/`weight_decay`?
+- **Parte B**: ¿se sostiene la ventaja de BWGNN hetero (0,9120 AUC / 0,6927 AP en YelpChi) al
+  portarlo al dataset real del producto? Y, más importante: ¿aguanta bajo un protocolo
+  estricto — split agrupado por reviewer, agrupado por negocio (cliente nuevo), y temporal —
+  en vez del split aleatorio que sabemos que infla la cifra de LightGBM (0,8448/0,3866)?
+
+**El truco que hace viable la Parte B**: `net_rsr` de Yelp-NYC tiene decenas de millones de
+aristas si se construyen explícitamente — inviable en una T4. Pero como la relación es una
+unión de cliques disjuntos (cada nodo conectado a todos los demás de su grupo y a nadie más,
+ya verificado en sesiones anteriores del proyecto), la propagación normalizada de BWGNN se
+reduce matemáticamente a una media por grupo, calculable con `index_add_` (scatter) sin
+construir ni una sola arista. Verificado antes de escribir el notebook que este método da
+resultados numéricamente idénticos (diferencia <1e-6) a construir la matriz sparse real y
+multiplicar.
+
 ## Si algo va mal
 
 | Síntoma | Qué hacer |
@@ -114,7 +150,9 @@ grande: en ese caso el sospechoso es la implementación, no el dataset.
 | Un `[BAJO]` en el control de reproducción del final | La implementación se ha quedado >5 puntos de AUC por debajo del paper. Sube `EPOCHS`, o prueba otro `d` con la celda opcional de barrido |
 | Un `assert` salta en la celda de carga | El fichero descargado no es el esperado. Borra `/content/data` y reejecuta — es mejor que romper ahí que publicar métricas de otro dataset |
 | El runtime se desconecta a media rejilla | Vuelve a `Ejecutar todo`. No hay estado que recuperar, el notebook es reproducible con `random_state=42` |
-| No se descarga el JSON al final | Está en el panel izquierdo de Colab (icono de carpeta) como `bwgnn_yelpchi_results.json`; descárgalo a mano |
+| No se descarga el JSON al final | Está en el panel izquierdo de Colab (icono de carpeta) como `bwgnn_yelpchi_results.json` / `bwgnn_v2_results.json`; descárgalo a mano |
+| (`bwgnn_v2.ipynb`) falla la descarga de `yelpnyc_bundle.npz` | Sube el fichero a mano al panel de archivos de la izquierda, en la ruta que indica el aviso, y reejecuta esa celda |
+| (`bwgnn_v2.ipynb`) el aviso de "Reproducido" no coincide con la referencia | Revisar antes de seguir: las mejoras de las celdas siguientes no son comparables si la reproducción del baseline falla |
 
 ## Referencias
 
@@ -126,3 +164,9 @@ grande: en ese caso el sospechoso es la implementación, no el dataset.
   Fraudsters* (CARE-GNN), CIKM 2020 — origen del `YelpChi.mat` preprocesado
 - Rayana & Akoglu, *Collective Opinion Spam Detection* (SpEagle), KDD 2015 — la referencia
   de ~0,78 AUC que cita el proyecto
+- Tang et al., *GADBench: Revisiting and Benchmarking Supervised Graph Anomaly Detection*,
+  NeurIPS 2023 D&B — <https://arxiv.org/abs/2306.12251>. Encuentra que árboles con agregación
+  de vecindario ("XGB-Graph") baten a la mejor GNN en +12,9 puntos de AUPRC de media sobre 10
+  datasets (YelpChi 70% train: XGB-Graph 91,11 AUPRC vs. BWGNN 61,53) — motivo por el que la
+  Fase 2 del plan (agregación de vecindario sobre árboles, sin GNN) sigue siendo la comparación
+  pendiente más importante después de este notebook.

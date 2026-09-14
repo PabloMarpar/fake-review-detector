@@ -1843,6 +1843,63 @@ producto sin necesidad de esperar a GNN ni a que SpEagle cierre la brecha con el
 real para integrar en `profile_cluster.py` y, más adelante, en la landing S1 ya pospuesta. Subir
 el notebook de Colab sigue pendiente de que el usuario lo ejecute.
 
+## Plan de mejora del modelo de grafo — Fase 1 (BWGNN) lista para ejecutar (2026-09-14/15)
+
+Tras el resultado de `bwgnn_yelpchi.ipynb` (BWGNN hetero: AUC 0,9120 / AP 0,6927 en YelpChi,
+reproduciendo el paper), el usuario pidió un plan completo para seguir mejorando AUC/AP del
+modelo de grafo, con dos restricciones explícitas: **(1) todo debe ser label-free** (nada de
+target encoding tipo `net_rur`, ni siquiera bien hecho con out-of-fold — se descarta esa vía
+por completo para mantener el modelo desplegable en un cliente sin etiquetas) y **(2) protocolo
+estricto (split agrupado/temporal) como cifra oficial**, no el aleatorio actual. Plan completo
+de 4 fases en `.claude/plans/teninedo-en-cuenta-que-atomic-forest.md` — resumen: Fase 1 (BWGNN,
+esta sesión), Fase 2 (agregación de vecindario sobre árboles, técnica de GADBench que bate a
+GNN en +12,9 AUPRC de media), Fase 3 (arreglar la señal de texto, hoy con AUC 0,4741 en
+`text_max_sim_business_diff_reviewer`, por debajo del azar), Fase 4 (ensemble final).
+
+El usuario pidió explícitamente reordenar y empezar por BWGNN, con el notebook subido a git
+para poder ejecutarlo él mismo en Colab.
+
+**Entregables de esta sesión, todos verificados antes de publicar (no solo escritos)**:
+
+- **`scripts/build_yelpnyc_bundle.py`** — empaqueta las 24 features label-free de Yelp-NYC
+  (las mismas de `features_behavior.py`) en `data_bundles/yelpnyc_bundle.npz` (12 MB,
+  comprimido, float32). Necesario porque las cachés CSV fuente (76 MB + 9 MB) están excluidas
+  de git y Colab no puede recomputarlas (requieren credenciales de Kaggle + ~18 min). Ejecutado
+  de verdad: 359.052 filas, 36.885 fraude (10,27%), 160.225 reviewers, 923 negocios.
+- **`colab/bwgnn_v2.ipynb`** (44 celdas) — dos partes:
+  - **Parte A**: mejora BWGNN hetero sobre YelpChi. Pista de partida: `best_epoch` fue 196 de
+    200 en la sesión anterior (el modelo seguía mejorando al acabar el entrenamiento). Añade
+    early stopping real (`patience`), búsqueda de `wavelet_order`/`hidden` (6 combos) y
+    `lr`/`weight_decay` (4 combos) optimizando **AP en validación** (nunca en test), y ensemble
+    de 5 semillas por promedio de rangos. Primer paso es reproducir el 0,9120/0,6927 ya medido
+    como ancla de cordura antes de aceptar ninguna mejora.
+  - **Parte B**: porta BWGNN hetero a Yelp-NYC — antes inviable por memoria (`net_rsr` tiene
+    decenas de millones de aristas). Resuelto con **`GroupLap`**: como cada relación
+    (`reviewer_id` / `business_id+rating` / `business_id+rating+semana`) es una unión de
+    cliques disjuntos exactos (ya verificado en sesiones anteriores), la propagación
+    normalizada de BWGNN colapsa a una media por grupo, calculable con `index_add_` (scatter)
+    sin construir ni una arista. Evalúa en split aleatorio, agrupado por reviewer, agrupado por
+    negocio (cliente nuevo) y temporal, con el corte cold-start siempre presente.
+- **`colab/README.md`** actualizado con instrucciones del notebook nuevo.
+
+**Verificación real hecha antes de publicar, no solo diseñada**:
+- El equivalente matemático de `GroupLap` se comprobó en CPU local contra la matriz sparse
+  explícita: diferencia <1e-6 en float32, incluyendo L² (necesario para wavelets de orden ≥2) y
+  el caso de nodos singleton. **Se encontró y corrigió un error real en el primer diseño**: la
+  propagación debía usar la media del grupo *incluyendo* el propio nodo (convención de
+  self-loops de `build_laplacian`, no una media leave-one-out como se asumió al principio) — sin
+  esta corrección los números habrían sido silenciosamente incorrectos.
+- El notebook completo se ejecutó de punta a punta en CPU local con datos sintéticos pequeños
+  (descargas reales sustituidas por inyección de datos, mismo código) para detectar bugs antes
+  de mandarlo a Colab. **Se encontró y corrigió un bug real** en el cálculo del cold-start: indexaba
+  `_counts_rev[reviewer_id]` asumiendo que los ids ya eran un rango denso 0..N-1 sin gaps — cierto
+  para el bundle actual (`pd.factorize` lo garantiza) pero no para cualquier entrada futura;
+  corregido a `_counts_rev[np.unique(..., return_inverse=True)]`, igual que ya hacía
+  correctamente el resto del notebook.
+
+**No ejecutado todavía en GPU real** — pendiente de que el usuario lo corra en Colab. Tiempo
+estimado (extrapolado, no cronometrado en T4 real): Parte A ~20-35 min, Parte B ~10-30 min.
+
 ## Fuentes de referencia rápida
 
 - Arquitectura completa, roadmap por fases, líneas rojas sobre atribución, y las ideas
