@@ -373,6 +373,9 @@ OWN_CORPUS_FILES = {
     "claude_generated.csv": "claude-sonnet-5",
     "qwen_generated.csv": "qwen2.5-1.5b-instruct",
     "openai_generated.csv": "gpt-4o / gpt-4o-mini",
+    "openai_gpt56luna_generated.csv": "gpt-5.6-luna",
+    "openai_gpt56terra_generated.csv": "gpt-5.6-terra",
+    "openai_gpt6astra_generated.csv": "gpt-6-astra",
 }
 
 
@@ -385,6 +388,17 @@ def evaluate_own_corpus() -> None:
     (`binoculars_sample_scores.csv`) y las features T3 de todo Ott
     (`stylometric_features.csv`, alineado por orden de fila con
     `reviews_baseline.csv`).
+
+    Ademas del agregado por fichero/generador, desglosa por `prompt_style`
+    cuando el CSV trae esa columna con mas de un valor -- imprescindible para
+    `gpt-6-astra`, donde 560 de las 610 filas son `hard_evasion` (estilo
+    pensado explicitamente para evadir deteccion) y solo 50 son
+    naive/adversarial/fewshot como el resto de generadores: mezclarlas en un
+    unico bloque escondería si hard_evasion es mas o menos detectable que el
+    resto, que es justo el dato que importa. T1 es lento en esta maquina
+    (CPU, sin GPU) -- para no duplicar coste, el score de cada review se
+    calcula una unica vez por fichero y se reutiliza (via mascara booleana)
+    tanto para el agregado del fichero como para cada desglose por estilo.
     """
     baseline = pd.read_csv(DATA_CSV)
     stylo_all = pd.read_csv(STYLO_CACHE)
@@ -398,33 +412,82 @@ def evaluate_own_corpus() -> None:
 
     t3_model = lgb.Booster(model_file=str(MODELS_DIR / "t3_lightgbm.txt"))
 
-    metrics = {"t1_own_corpus": {}, "t3_own_corpus": {}}
+    # Reanudable por fichero: T1 es lento (horas para el corpus completo en
+    # esta maquina sin GPU) y ya se ha visto morir a mitad (portatil
+    # suspendido de noche) -- si un fichero ya tiene su checkpoint guardado
+    # con el mismo n de filas, se salta en vez de recalcular desde cero.
+    cached = _load_metrics()
+    metrics = {
+        "t1_own_corpus": dict(cached.get("t1_own_corpus", {})),
+        "t3_own_corpus": dict(cached.get("t3_own_corpus", {})),
+    }
     for fname, generator_label in OWN_CORPUS_FILES.items():
         path = OWN_CORPUS_DIR / fname
         if not path.exists():
             continue
-        df = pd.read_csv(path)
+        df = pd.read_csv(path).reset_index(drop=True)
+        key = fname.replace("_generated.csv", "").replace(".csv", "")
+
+        already_done = (
+            metrics["t1_own_corpus"].get(f"n_{key}") == len(df)
+            and metrics["t3_own_corpus"].get(f"n_{key}") == len(df)
+        )
+        if already_done:
+            print(f"Saltando {fname} ({len(df)} reviews): ya evaluado en un checkpoint previo.")
+            continue
+
         print(f"Evaluando {fname} ({len(df)} reviews, generador: {generator_label})...")
 
-        # T1
-        t1_ai_scores = -pd.Series([binoculars_score(str(t)) for t in df["text"]])
-        t1_y = np.array([1] * len(t1_ai_scores) + [0] * len(ott_t1_human))
-        t1_scores = pd.concat([t1_ai_scores, -ott_t1_human], ignore_index=True)
-        key = fname.replace("_generated.csv", "")
-        metrics["t1_own_corpus"][f"n_{key}"] = len(df)
-        metrics["t1_own_corpus"][f"tpr_at_1pct_fpr_{key}"] = _tpr_at_fpr(t1_y, t1_scores, 0.01)
-        metrics["t1_own_corpus"][f"tpr_at_5pct_fpr_{key}"] = _tpr_at_fpr(t1_y, t1_scores, 0.05)
+        print(f"  Calculando T1 (Binoculars) para {len(df)} reviews...")
+        t1_ai_scores_full = -pd.Series([binoculars_score(str(t)) for t in df["text"]])
+        print(f"  Calculando T3 (estilometria) para {len(df)} reviews...")
+        ai_feats_full = pd.DataFrame(
+            [stylometric_features(str(t)) for t in df["text"]]
+        )[STYLO_FEATURE_COLS]
 
-        # T3
-        ai_feats = pd.DataFrame([stylometric_features(str(t)) for t in df["text"]])[STYLO_FEATURE_COLS]
-        t3_X = pd.concat([ai_feats, ott_t3_human], ignore_index=True)
-        t3_scores = t3_model.predict(t3_X)
-        t3_y = np.array([1] * len(ai_feats) + [0] * len(ott_t3_human))
-        metrics["t3_own_corpus"][f"n_{key}"] = len(df)
-        metrics["t3_own_corpus"][f"tpr_at_1pct_fpr_{key}"] = _tpr_at_fpr(t3_y, t3_scores, 0.01)
-        metrics["t3_own_corpus"][f"tpr_at_5pct_fpr_{key}"] = _tpr_at_fpr(t3_y, t3_scores, 0.05)
+        def _eval_mask(mask: np.ndarray, sub_key: str) -> None:
+            n = int(mask.sum())
+            if not n:
+                return
+            t1_sub = t1_ai_scores_full[mask]
+            t1_y = np.array([1] * n + [0] * len(ott_t1_human))
+            t1_scores = pd.concat([t1_sub, -ott_t1_human], ignore_index=True)
+            metrics["t1_own_corpus"][f"n_{sub_key}"] = n
+            metrics["t1_own_corpus"][f"tpr_at_1pct_fpr_{sub_key}"] = _tpr_at_fpr(t1_y, t1_scores, 0.01)
+            metrics["t1_own_corpus"][f"tpr_at_5pct_fpr_{sub_key}"] = _tpr_at_fpr(t1_y, t1_scores, 0.05)
 
-    _save_metrics(metrics)
+            feats_sub = ai_feats_full[mask]
+            t3_X = pd.concat([feats_sub, ott_t3_human], ignore_index=True)
+            t3_scores = t3_model.predict(t3_X)
+            t3_y = np.array([1] * n + [0] * len(ott_t3_human))
+            metrics["t3_own_corpus"][f"n_{sub_key}"] = n
+            metrics["t3_own_corpus"][f"tpr_at_1pct_fpr_{sub_key}"] = _tpr_at_fpr(t3_y, t3_scores, 0.01)
+            metrics["t3_own_corpus"][f"tpr_at_5pct_fpr_{sub_key}"] = _tpr_at_fpr(t3_y, t3_scores, 0.05)
+
+        _eval_mask(np.ones(len(df), dtype=bool), key)
+
+        if "prompt_style" in df.columns and df["prompt_style"].nunique() > 1:
+            styles = df["prompt_style"].unique().tolist()
+            for style in styles:
+                mask = (df["prompt_style"] == style).values
+                sub_key = f"{key}__{style}"
+                print(f"  -> desglose {sub_key} ({mask.sum()} reviews)...")
+                _eval_mask(mask, sub_key)
+
+            # Astra en concreto necesita, ademas del desglose fino por estilo,
+            # el contraste explicito "hard_evasion vs. el resto" pedido: es la
+            # comparacion que importa para saber si el estilo anti-deteccion
+            # es realmente mas dificil que naive/adversarial/fewshot juntos.
+            if "hard_evasion" in styles:
+                mask = (df["prompt_style"] != "hard_evasion").values
+                sub_key = f"{key}__non_hard_evasion"
+                print(f"  -> desglose {sub_key} ({mask.sum()} reviews)...")
+                _eval_mask(mask, sub_key)
+
+        # Checkpoint tras cada fichero: T1 es lento (CPU, sin GPU) y esto
+        # puede tardar horas -- no perder progreso si algo falla a mitad.
+        _save_metrics(metrics)
+
     print(json.dumps(metrics, indent=2))
 
 

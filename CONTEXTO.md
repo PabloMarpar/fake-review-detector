@@ -1198,6 +1198,107 @@ consola con esta codificación. Solución de verificación usada: `PYTHONIOENCOD
 profile_cluster.py`. Pendiente de decidir si se arregla en el código (evitar caracteres fuera de
 ASCII en la salida de consola) o se deja como una nota de entorno para quien lo ejecute en Windows.
 
+## T1/T3 contra el corpus OpenAI completo (incl. `hard_evasion`), delegado a `agente-codigo`
+(2026-09-14)
+
+Con la GPU en casa, quedaba pendiente medir T1 (Binoculars) y T3 (estilometría) contra los 4
+ficheros de OpenAI generados en la sesión anterior (mini/luna/terra/astra, ~1290 reviews) — en
+especial `hard_evasion` (560 filas de `gpt-6-astra`, el estilo diseñado explícitamente para
+evadir detección). Es trabajo CPU-only (T1 es zero-shot, T3 ya tenía modelo entrenado en
+`outputs/models/t3_lightgbm.txt`), así que se hizo en el portátil de trabajo mientras la máquina
+de casa sigue reservada para lo que de verdad necesita GPU. Delegado a `agente-codigo`.
+
+**`evaluate_own_corpus()` (`train.py`) reescrita**: además de las 3 entradas nuevas en
+`OWN_CORPUS_FILES` (`gpt-5.6-luna`, `gpt-5.6-terra`, `gpt-6-astra`), ahora desglosa por
+`prompt_style` cuando el CSV lo trae, y para `gpt-6-astra` en concreto genera el contraste
+explícito `hard_evasion` vs. `non_hard_evasion` (naive+adversarial+fewshot, 50 filas). El score de
+cada review se calcula una única vez por fichero y se reutiliza vía máscara booleana para el
+agregado y cada desglose, para no duplicar coste con T1 tan lento en CPU.
+
+**Resultados — T1 (Binoculars), TPR@FPR contra Ott truthful como referencia humana:**
+
+| Generador | n | TPR@1%FPR | TPR@5%FPR |
+|---|---|---|---|
+| claude-sonnet-5 | 100 | 0.060 | 0.150 |
+| qwen2.5-1.5b-instruct | 500 | 0.044 | 0.086 |
+| gpt-4o / gpt-4o-mini | 300 | 0.013 | 0.050 |
+| gpt-5.6-luna | 230 | 0.004 | 0.013 |
+| gpt-5.6-terra | 150 | 0.007 | 0.033 |
+| gpt-6-astra (total) | 610 | 0.005 | 0.013 |
+| — **hard_evasion** (560) | | **0.0036** | **0.0125** |
+| — non_hard_evasion (50) | | 0.02 | 0.02 |
+
+**Resultados — T3 (estilometría + LightGBM):**
+
+| Generador | n | TPR@1%FPR | TPR@5%FPR |
+|---|---|---|---|
+| claude-sonnet-5 | 100 | 0.010 | 0.010 |
+| qwen2.5-1.5b-instruct | 500 | 0.004 | 0.020 |
+| gpt-4o / gpt-4o-mini | 300 | 0.003 | 0.020 |
+| gpt-5.6-luna | 230 | 0.000 | 0.009 |
+| gpt-5.6-terra | 150 | 0.000 | 0.027 |
+| gpt-6-astra (total) | 610 | 0.000 | 0.002 |
+| — **hard_evasion** (560) | | **0.000** | **0.000** |
+| — non_hard_evasion (50) | | 0.000 | 0.020 |
+
+Desgloses completos (incl. por `prompt_style` naive/adversarial/fewshot individual) en
+`outputs/metrics.json`, claves `t1_own_corpus`/`t3_own_corpus`.
+
+**Hallazgo central: `hard_evasion` es, con diferencia, el subgrupo más indetectable medido hasta
+ahora — confirma que el diseño del prompt cumplió su objetivo.** Con T3 el resultado es extremo:
+**TPR = 0.0 en ambos umbrales sobre 560 reviews**, ni una sola detectada ni permitiendo 5% de
+falsos positivos — peor que el peor resultado histórico conocido hasta ahora (Ott, 0.075). Con T1
+la brecha es más moderada al 5%FPR (0.0125 vs. 0.02 de `non_hard_evasion`) pero se amplía ~6x en
+el umbral más estricto del 1%FPR (0.0036 vs. 0.02). Confirma, con más generadores todavía, el
+patrón ya conocido de Fase 0: T1/T3 fallan casi por completo contra LLMs modernos (el TPR@5%FPR
+más alto de toda la tabla es 0.15, muy lejos del 0.80/0.68 que sacaban contra GPT-2 2019) — T2
+sigue siendo la única señal de texto viable. Indicio no concluyente de que, dentro de la familia
+OpenAI, los modelos más nuevos son algo más difíciles de detectar con T1 que `gpt-4o`
+(luna 0.013, terra 0.033, astra 0.013 vs. 0.05) — no estrictamente monótono, pero en la dirección
+esperada. **Salvedad de tamaño muestral**: los desgloses finos por estilo individual dentro de
+astra (naive=15, adversarial=16, fewshot=19) son muestras muy pequeñas, una sola review cambia el
+TPR varios puntos — solo `hard_evasion` (560) y el agregado `non_hard_evasion` (50) tienen algo de
+robustez estadística dentro de astra.
+
+**Nota para T2, todavía sin ejecutar contra este corpus**: sigue pendiente medir T2 contra
+`hard_evasion` en cuanto haya máquina con GPU — es el dato que de verdad importa para saber si el
+detector "real" del proyecto (T2, no T1/T3) también se hunde contra este estilo, o si al menos
+mantiene algo de la generalización entre generadores modernos que ya mostró (0.825 TPR@5%FPR
+contra el held-out de OpenAI "normal"). No asumir el resultado de T1/T3 se traslada a T2 sin
+medirlo.
+
+**Dos incidentes operativos reales de esta sesión, documentados para que no se repitan:**
+
+1. **El primer intento de la evaluación murió a mitad de la noche** (exit code 127, casi con
+   certeza por suspensión del portátil de trabajo) tras completar solo `claude`+`qwen`
+   (~600 reviews). Arreglado añadiendo **reanudabilidad real por fichero** a
+   `evaluate_own_corpus()`: antes de recalcular un fichero, comprueba si ya hay un checkpoint en
+   `metrics.json` con el mismo número de filas y lo salta si es así — mejora permanente en el
+   código, no solo un parche de esta sesión.
+2. **Colisión real entre el maestro y el propio agente en background**: tras el fallo nocturno,
+   tanto el maestro (en un intento manual de relanzar el job) como `agente-codigo` (que seguía
+   "vivo" en background y detectó el mismo fallo) relanzaron `train.py eval_own_corpus`
+   independientemente, en el mismo worktree, durante ~2 minutos con dos procesos reales
+   compitiendo por el mismo fichero de checkpoint (confirmado por CPU real en ambos, no un
+   proceso fantasma). Cortado a tiempo sin corrupción (los checkpoints son por fichero y ninguno
+   llegó a completar uno en ese margen), pero **lección para cualquier sesión futura con un
+   agente delegado corriendo un proceso largo en background**: si el maestro necesita
+   comprobar/relanzar algo en el mismo directorio de trabajo de un agente que sigue vivo, avisar
+   primero o esperar a que el agente reporte, no actuar en paralelo sobre el mismo checkpoint.
+   Motivo distinto (y ya corregido por separado) del incidente de "procesos duplicados por
+   `run_in_background`" documentado el 2026-09-12 — aquí ambos procesos eran reales y venían de
+   dos orígenes distintos (maestro + agente), no de un artefacto del harness.
+
+**Fusión de vuelta a `main`**: el trabajo se hizo en un worktree aislado (`agente-codigo` con
+`isolation: "worktree"`) que partía de un `main` seis commits más viejo (antes de que otra sesión
+completara gran parte de la Fase 1 — Yelp-Chi, Yelp-NYC, bretthollenbeck, clustering, burst
+detection, perfilado, Nivel D — directamente sobre `main`). El maestro fusionó a mano los cambios
+de `train.py` (ampliación de `OWN_CORPUS_FILES` + reescritura de `evaluate_own_corpus`) sobre el
+`train.py` real sin tocar nada de lo añadido mientras tanto (`import data`, `eval_t2_on_yelpnyc`),
+y fusionó igual las claves `t1_own_corpus`/`t3_own_corpus` en el `outputs/metrics.json` real. Sin
+esto, el resultado se habría quedado atrapado en el worktree y habría revertido silenciosamente el
+trabajo de Fase 1 si se hubiera sobrescrito sin más.
+
 ## Fuentes de referencia rápida
 
 - Arquitectura completa, roadmap por fases, líneas rojas sobre atribución, y las ideas
