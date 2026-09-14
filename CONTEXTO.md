@@ -1017,6 +1017,187 @@ completo), no solo aceptado por el resumen del especialista.
   con banda de abstención ya con T2 real; (3) decidir con el usuario si Amazon se usa como
   segundo dataset de validación de esta misma metodología de clustering.
 
+## Sesión de investigación — mejorar Fase 1 pensando en el cliente real (2026-09-14)
+
+El usuario pidió parar a pensar la Fase 1 desde el ángulo de "¿cómo lo usaríamos con un cliente
+real?" en vez de seguir buscando datasets sueltos a ciegas. Lo llevó `agente-maestro`, en modo
+investigación (sin tocar código hasta decidir). Documento completo de la sesión (con todos los
+hallazgos verificados) en el plan file de esta sesión de Claude Code; aquí el resumen ejecutable.
+
+**Marco que quedó fijado, para no repetir la confusión inicial**: hay dos cosas distintas que no
+hay que mezclar — (1) datasets académicos públicos para validar que la metodología funciona *hoy*,
+sin cliente, y (2) qué le pediríamos a un cliente real en el onboarding para que el perfilado
+funcione en producción. El README ya tenía el diseño de 4 niveles (`Nivel A/B/C/D`, líneas
+159-176) pensado para esto — lo nuevo es mapear qué nivel depende de qué tipo de fuente:
+Nivel A (grafo+ráfaga) solo necesita la tabla de reviews que cualquier cliente ya tiene; Nivel B
+(cohorte de cuenta) necesita `users.created_at`, un campo casi universal pero que **ningún
+dataset público de reviews trae** (Yelp-Chi/Amazon/Yelp-NYC ni el nuevo de abajo) — no es un hueco
+que se resuelva buscando más, se resuelve con datos reales de un piloto, tal como ya avisaba el
+README.
+
+**Descartado tras razonarlo, no solo por falta de tiempo**: usar un dataset de bots de otro
+dominio (TwiBot-22/Cresci-2017, Twitter) para "probar el mecanismo" del Nivel B. La técnica de
+ráfaga+similitud ya está validada matemáticamente con `net_rur` en Yelp-NYC (LOO-AUC 0,90); un bot
+que tuitea no dice nada sobre si el mecanismo discrimina fraude de reviews específicamente. Cero
+valor añadido, no se investiga más esta vía.
+
+**Nuevo dataset encontrado y verificado de verdad (no solo por su README)** —
+`bretthollenbeck/fake-reviews-data` (Amazon, MIT, sin cuenta,
+[GitHub](https://github.com/bretthollenbeck/fake-reviews-data), datos alojados en el WordPress
+personal del autor): se descargó el CSV real (~64MB comprimido) y se inspeccionó con pandas antes
+de dar nada por bueno. Columnas reales: `asin, review_id, reviewer_id, review_title, review_text,
+review_rating, review_date, product_title, product_url, number_of_helpful, number_of_photos,
+photo_thumbnail_urls, photo_fullsize_urls, asin_url, review_url, reviewer_url,
+fake_review_campaign_start_date, fake_review_product, reviewer_classified_fake/honest,
+reviewer_labeled_fake/honest, review_is_removed_by_amazon`. Al contrario de lo que sugería la
+documentación del repo (no listaba `reviewer_id`/`asin` explícitamente), **sí trae grafo real
+construible** (reviewer↔producto). 381.734 reviews, 334.342 reviewers únicos, solo 3.389
+productos (dataset centrado en productos con campaña de fraude conocida, no muestra aleatoria).
+**Dos tipos de etiqueta que no hay que confundir**: `reviewer_classified_*` es la predicción de un
+clasificador de un paper externo (57.667 fake), `reviewer_labeled_*` es la etiqueta manual/curada
+de verdad (solo 80.281 filas la tienen: 22.138 fake / 10.802 honesta) — evaluar siempre contra la
+manual. **`fake_review_campaign_start_date` presente en 143.427 filas** — fecha real de inicio de
+campaña de reclutamiento de reseñas falsas (investigación externa, no proxy), la primera vez que
+este proyecto tiene ground truth real de fecha para burst detection (Yelp-Chi/Amazon/Yelp-NYC solo
+tienen proxy de spam, no fecha de evento conocida). Sigue sin tener fecha de alta de cuenta (Nivel
+B sigue bloqueado, confirma que es un hueco estructural de los datasets públicos de reviews, no de
+búsqueda). **Decisión: se integra como cuarto dataset de grafo en `data.py`** (implementación
+delegada a `agente-datos`, ver más abajo si ya está hecho en el momento de leer esto).
+
+**Esquema mínimo de onboarding de cliente real** — borrador cerrado en la sesión, mapeado a
+Nivel A-D: tabla `reviews` (`review_id, reviewer_id, business_id, rating, text, created_at`,
+imprescindible, cualquier cliente la tiene) + tabla `users` con `created_at` (activa Nivel B, coste
+bajo de pedir, campo casi universal) + opcionales `username`/`avatar_url`/`email_domain` (Nivel D
+parcial) + campos que solo existen si el cliente ya los captura por su cuenta (`ip_address`/
+`device_fingerprint`/teléfono verificado). **El usuario se lleva este borrador a iterarlo en otra
+sesión/agente** — no se ha tocado ningún fichero de código ni el README con esto todavía, queda
+fuera de esta sesión.
+
+**Enriquecimiento de Nivel D — probado en vivo, no solo buscado**: se pidió explícitamente mirar
+alternativas *gratuitas* (no solo APIs de pago tipo Trustfull con teléfono/email/IP). Encontradas y
+probadas de verdad, con llamadas reales:
+- **Email desechable — `disposable.debounce.io`, gratis, sin API key, aprobado para integrar.**
+  Probado con 3 casos reales (`gmail.com` → false, `10minutemail.com` → true, `mailinator.com` →
+  true), los tres correctos. Encaja perfecto con la regla ya fijada de "solo el dominio del email,
+  nunca la dirección completa" — la API ni siquiera necesita más que eso.
+- **Teléfono — descartado, no se integra.** La opción que más prometía en la búsqueda inicial
+  (`omkarcloud/phone-lookup-api`, "5.000 gratis/mes" según su propio marketing) resultó, al leer su
+  documentación técnica real, exigir registro con API key y dar solo 200/mes de verdad — desviación
+  real entre lo anunciado y lo real, mismo patrón de "verificar antes de recomendar" que ya
+  documentaba `agente-datos.md`. Decisión del usuario: no perseguir esta vía por ahora.
+
+**`load_bretthollenbeck_dataset()` implementado en `data.py` y verificado de verdad por
+`agente-datos` (2026-09-14)** — descarga real ejecutada (no reutilización de las cifras que ya
+traía el maestro), zip de 64.369.322 bytes (coincide exacto con `Content-Length`), CSV extraído
+ignorando `__MACOSX/`, cargado con pandas. Cifras recargadas de forma independiente y coinciden
+con las del maestro: 381.734 filas, 334.342 `reviewer_id` únicos, 3.389 `asin` únicos,
+`fake_review_product` True en 160.553, `campaign_start_date` no nula en 143.427,
+`reviewer_classified_fake` True en 57.667 / `reviewer_classified_honest` True en 22.614.
+
+## Brainstorm — modelo de integración y monetización por cliente (2026-09-14)
+
+Conversación con el usuario (fuera de `.claude/agents/`, sesión general) sobre cómo se le
+entregaría CheckGraph a un cliente real. **Solo ideas acordadas, ningún fichero de código ni el
+README tocados todavía** — queda para iterar cuando se acerque la Fase 2 (S2) o aparezca un
+piloto real.
+
+**Modelo de integración en 3 niveles, no simultáneos desde el día 1** (se añade el siguiente
+nivel cuando un cliente real lo pida, no por adelantado — misma regla que ya fijaba el README
+para la API):
+
+1. **CSV manual (gancho de entrada)**: el cliente sube un CSV/export con tope bajo (p. ej. 100
+   reviews), mapeo de columnas asistido, informe puntual. Es la puerta de entrada para
+   cualquier perfil, técnico o no — ya es lo que describe S2 en el README.
+2. **Recurrente sin acceso a la BBDD del cliente**: en vez de pedir credenciales de su base de
+   datos (descartado explícitamente, ver más abajo), el cliente programa un export periódico
+   propio (bucket/SFTP/Sheet compartido) que se recoge solo, o se usa la API de una plataforma
+   que el cliente ya use (Google Business Profile / Trustpilot, el S3 ya existente en el
+   README) **solo cuando aplique** — corrección importante encontrada en la propia
+   conversación: no todas las webs tienen ficha de Google Business Profile (es sobre todo para
+   negocios con presencia física/local) y el público objetivo de este proyecto son webs con
+   **reviews propias** (README), que muchas veces no viven ni en GBP ni en Trustpilot — así que
+   GBP/Trustpilot es un canal complementario para quien sí lo use, no el canal principal de
+   automatización.
+3. **Automático real — webhook/API con permisos mínimos**: cuando al cliente le entra una
+   review nueva, su propio sistema la manda a un endpoint de CheckGraph (con una API key
+   acotada solo a "analiza esta review"), como el patrón de webhooks de Stripe. Requiere
+   desarrollador en el lado del cliente, pero nunca acceso de lectura/escritura a su base de
+   datos.
+
+**Descartado explícitamente: pedir acceso directo a la base de datos del cliente.** Ninguna
+empresa con un mínimo de criterio de seguridad lo concedería (riesgo legal RGPD, superficie de
+ataque si CheckGraph sufre una brecha), y es contradictorio vender un producto de "confianza/
+integridad de reseñas" pidiendo algo que ningún responsable de seguridad aprobaría. El webhook
+de permisos mínimos (nivel 3) da la misma automatización sin ese problema.
+
+**Monetización propuesta, calcada a los mismos 3 niveles** (más automatización = más coste
+propio de dar soporte/integración = precio más alto, no al revés):
+
+- **Nivel 1 (CSV)**: gratis o precio simbólico. No es donde se gana dinero, es coste de
+  adquisición — el cliente ve reviews sospechosas reales y ahí se vende el salto al nivel 2.
+- **Nivel 2 (recurrente)**: suscripción mensual con tope de volumen incluido, precio por encima
+  si se supera. Previsto como el nivel ancla del negocio (paga por no tener que pensar en ello).
+- **Nivel 3 (webhook/API, enterprise)**: sin tarifa de catálogo — se negocia por piloto, porque
+  cada integración exige trabajo real de acompañamiento técnico.
+
+**Nota de criterio, coherente con la regla ya fijada del proyecto para la API**: no fijar
+precios ni construir los niveles 2/3 antes de tener un cliente de pago real delante — la
+estructura de 3 escalones se deja anotada aquí, pero los números concretos (topes de volumen,
+precio) se deciden con el primer piloto, no a ciegas ahora.
+
+**Hallazgo nuevo no reportado antes, encontrado al cruzar `reviewer_labeled_fake` con
+`reviewer_labeled_honest`** (las 80.281 filas con etiqueta manual): no son complementarias en un
+simple fake/honesto — 22.138 tienen `fake=1`, 10.802 tienen `honest=1`, y **47.341 tienen las dos
+a 0** (el curador las miró y no las marcó en ningún extremo, no es lo mismo que "sin etiquetar").
+Cero filas con las dos a 1 a la vez. Por eso `is_fake` en el DataFrame de salida es un booleano
+*nullable* (`pandas.BooleanDtype`, no `bool` normal): `True`/`False` solo donde hay etiqueta
+manual, `pandas.NA` en las 301.453 filas restantes — deliberadamente no se rellena `NA` con
+`False`, porque eso mentiría diciendo "no es fake" donde no hubo ningún juicio manual.
+
+Columnas de salida: además de las estándar del fichero (`reviewer_id`, `business_id` [de `asin`],
+`rating`, `date`, `text`, `is_fake`, `source_dataset="bretthollenbeck_amazon"`), se añaden sin
+colapsar nada `review_id`, `review_title`, `campaign_start_date`, `fake_review_product`,
+`reviewer_classified_fake`, `reviewer_classified_honest`, `reviewer_labeled_honest` y
+`review_is_removed_by_amazon` — la etiqueta automática y la fecha de campaña quedan expuestas
+tal cual, no fusionadas en `is_fake`. 9.329 duplicados exactos de `review_text` (2,4%), no
+eliminados (mismo criterio que Yelp-NYC: borrarían aristas reviewer-producto reales). Sin fecha
+de alta de cuenta (Nivel B sigue bloqueado, como en todos los públicos). No se ha tocado
+`features_graph.py`, `profile_cluster.py` ni `train.py` — integración pendiente, fuera de esta
+tarea.
+
+**`nivel_d_evidence()` implementado en `profile_cluster.py` por `agente-codigo`, verificado por
+el maestro ejecutándolo de nuevo (2026-09-14)**: única señal real de Nivel D hoy — proporción de
+reviewers únicos del cluster con dominio de email desechable, consultado en tiempo real contra
+`disposable.debounce.io` (cacheado por dominio con `lru_cache`, timeout 5s, nunca lanza excepción
+— un dominio que falla se excluye del ratio, no se cuenta como "no desechable" por defecto).
+**Hallazgo real de la verificación del especialista, importante**: pasar el dominio con `@`
+delante y sin usuario (`@mailinator.com`) hace que la API devuelva `"false"` siempre, incluso para
+dominios desechables confirmados — falso negativo silencioso. Corregido limpiando cualquier `@`
+inicial antes de llamar. Integrado en `build_cluster_card()` con el mismo patrón de "sin
+evidencia" que ya usaba Nivel B cuando el DataFrame no trae la columna esperada (`email_domain`,
+ningún dataset público cargado hoy la trae). Verificado por el maestro con el `__main__` real del
+fichero: el cluster de demo (negocio 826, rating 1, 92,3% fraude real) sale correcto con la línea
+de Nivel D en "sin evidencia" contra Yelp-NYC, como se esperaba.
+
+**Corrección real al `README.md`, encontrada al revisar el trabajo del especialista antes de
+cerrarlo**: el README ya tenía una sección ("Ideas evaluadas y descartadas") que rechazaba
+explícitamente "DeBounce" como enriquecimiento de email por no ser "gratis para siempre sin
+fricción". Investigado a fondo: eso es cierto para el producto de pago de DeBounce (verificación
+masiva, créditos desde $10/5.000), pero `disposable.debounce.io` es un endpoint **distinto y
+dedicado** de la misma empresa, solo para esto, gratis de verdad sin API key — no es una
+contradicción, son dos productos distintos bajo el mismo nombre de marca que la investigación
+original no había separado. README corregido para reflejar la distinción, con la salvedad de que
+el límite de peticiones diarias de ese endpoint gratuito no está publicado por DeBounce.
+
+**Bug de entorno encontrado al verificar (Windows, no relacionado con Nivel D en sí)**: ejecutar
+`python profile_cluster.py` directamente en esta terminal revienta con `UnicodeEncodeError` al
+imprimir la línea separadora `"─" * 60` de `build_cluster_card` — la consola de Windows de esta
+máquina usa cp1252 por defecto, que no tiene ese carácter. No es un bug introducido hoy (la línea
+ya existía antes de la sesión), simplemente no se había ejecutado antes directamente en esta
+consola con esta codificación. Solución de verificación usada: `PYTHONIOENCODING=utf-8 python
+profile_cluster.py`. Pendiente de decidir si se arregla en el código (evitar caracteres fuera de
+ASCII en la salida de consola) o se deja como una nota de entorno para quien lo ejecute en Windows.
+
 ## Fuentes de referencia rápida
 
 - Arquitectura completa, roadmap por fases, líneas rojas sobre atribución, y las ideas

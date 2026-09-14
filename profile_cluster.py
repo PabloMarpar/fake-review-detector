@@ -25,12 +25,22 @@ grafo disponible**:
   no un número inventado ni un proxy que aparente serlo — ver README,
   sección "Riesgos clave": "el Nivel B del perfilado no es validable con los
   datasets académicos disponibles [...] hasta un piloto real".
-- **Niveles C (texto) y D (metadatos)**: fuera de alcance de esta sesión —
-  Nivel C necesitaría un índice offline de near-duplicates (no construido
-  aquí) y Nivel D necesita metadatos que Yelp-NYC no trae (avatar, username,
-  email). No se implementan como placeholders vacíos para no aparentar más
-  cobertura de la que hay; el README ya los documenta como parte del roadmap
-  de Fase 2.
+- **Nivel C (texto)**: fuera de alcance — necesitaría un índice offline de
+  near-duplicates (no construido aquí). No se implementa como placeholder
+  vacío para no aparentar más cobertura de la que hay; el README ya lo
+  documenta como parte del roadmap de Fase 2.
+- **Nivel D (metadatos)**: implementada UNA única señal (dominio de email
+  desechable, `nivel_d_evidence`, sesión 2026-09-14) de las cuatro que
+  menciona el README para este nivel — las otras tres (avatar reutilizado,
+  homogeneidad de username, ventana horaria de actividad) siguen fuera de
+  alcance porque necesitan datos (imágenes de avatar, timestamps de
+  actividad con granularidad horaria) que ningún dataset cargado hoy trae.
+  A diferencia del resto del módulo, esta señal hace una llamada de red real
+  en tiempo de ejecución (API gratuita `disposable.debounce.io`) — ver
+  docstring de `nivel_d_evidence` para el detalle de caché, timeout y manejo
+  de fallos. Yelp-NYC tampoco trae columna de dominio de email, así que
+  contra ese dataset esta función también devuelve `disponible: False`,
+  mismo patrón que Nivel B.
 
 **Línea roja respetada en todo el módulo** (ver README, "Sobre qué se puede
 prometer de verdad"): ninguna función de aquí calcula ni infiere
@@ -42,8 +52,11 @@ del formato de salida.
 
 from __future__ import annotations
 
+import functools
+
 import numpy as np
 import pandas as pd
+import requests
 from scipy.sparse import spmatrix
 
 
@@ -251,6 +264,190 @@ def nivel_b_evidence(df: pd.DataFrame, cluster_idx: np.ndarray) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Nivel D — metadatos (una única señal implementada: dominio de email
+# desechable). NO validable con Yelp-NYC (sin columna de email), ver
+# docstring del módulo.
+# ---------------------------------------------------------------------------
+
+# Nombre de columna esperado si el DataFrame trae dominio de email. Coherente
+# a propósito con el borrador de esquema de onboarding de cliente cerrado en
+# la sesión de investigación del 2026-09-14 (ver CONTEXTO.md), que ya lista
+# `email_domain` como campo opcional de Nivel D — solo el dominio
+# (`"gmail.com"`), NUNCA la dirección de email completa.
+EMAIL_DOMAIN_COLUMN = "email_domain"
+
+# API gratuita, sin API key ni registro, verificada con llamadas reales en la
+# sesión del 2026-09-14 (ver `_is_disposable_domain` para el detalle de los
+# casos probados). Respondió en <50ms en la verificación en vivo, así que un
+# timeout de 5s deja margen de sobra sin arriesgar dejar colgado el
+# perfilado de un cluster si el servicio externo tiene un mal momento.
+DISPOSABLE_API_URL = "https://disposable.debounce.io/"
+DISPOSABLE_API_TIMEOUT = 5.0
+
+
+@functools.lru_cache(maxsize=None)
+def _is_disposable_domain(domain: str) -> str:
+    """Consulta si `domain` es un dominio de email "de usar y tirar" contra
+    `disposable.debounce.io`. Devuelve el string `"true"`, `"false"` (tal
+    cual los deja la API, no booleanos Python) o `"error"` si la consulta
+    falla de cualquier forma (timeout, red caída, respuesta que no es el
+    JSON esperado) — **nunca lanza una excepción hacia quien llama**, para
+    que un único dominio problemático no reviente el perfilado de todo el
+    cluster.
+
+    Cacheada con `functools.lru_cache` por dominio: dentro de una misma
+    ejecución, si varios reviewers de un cluster comparten proveedor de
+    email (frecuente — mismo dominio corporativo o mismo servicio
+    desechable), la llamada de red solo se hace una vez por dominio.
+
+    **Solo se envía el dominio, nunca la dirección de email completa** —
+    regla de privacidad ya fijada en README (Nivel D) y en
+    `agente-datos.md`. Esta API en concreto ni siquiera necesita más que el
+    dominio para responder correctamente.
+
+    **Hallazgo real de verificación de esta sesión (2026-09-14), importante
+    para no reintroducir el bug**: la API es sensible al formato exacto del
+    parámetro `email`. Probado en vivo:
+    - `gmail.com` → `"false"` (correcto)
+    - `10minutemail.com` → `"true"` (correcto)
+    - `mailinator.com` → `"true"` (correcto)
+    - `@gmail.com` y `@mailinator.com` (dominio con `@` delante, sin parte de
+      usuario) → **`"false"` los dos** — es decir, con ese formato la API
+      responde "no desechable" SIEMPRE, incluso para un dominio desechable
+      confirmado. Es un falso negativo silencioso, sin error visible, así
+      que es fácil no darse cuenta si no se prueba explícitamente.
+    Por eso esta función limpia el dominio quitando cualquier `@` inicial
+    antes de llamar a la API — nunca se le pasa `@dominio.com`, solo
+    `dominio.com`.
+    """
+    domain = domain.strip().lstrip("@").lower()
+    if not domain:
+        return "error"
+    try:
+        resp = requests.get(
+            DISPOSABLE_API_URL, params={"email": domain}, timeout=DISPOSABLE_API_TIMEOUT
+        )
+        resp.raise_for_status()
+        payload = resp.json()
+        veredicto = payload.get("disposable")
+        if veredicto not in ("true", "false"):
+            return "error"
+        return veredicto
+    except (requests.RequestException, ValueError):
+        return "error"
+
+
+def nivel_d_evidence(
+    df: pd.DataFrame,
+    cluster_idx: np.ndarray,
+    email_domain_column: str = EMAIL_DOMAIN_COLUMN,
+) -> dict:
+    """Nivel D, recortado a una única señal: proporción de reviewers ÚNICOS
+    del cluster (un reviewer con varias reviews dentro del cluster cuenta una
+    sola vez, no una vez por review) cuyo dominio de email es "de usar y
+    tirar" (`mailinator.com`, `10minutemail.com`, etc.), consultado en tiempo
+    real contra `disposable.debounce.io` (gratis, sin API key).
+
+    **Por qué solo esta señal de Nivel D y no las otras tres que menciona el
+    README** (reutilización de avatar vía hash perceptual, homogeneidad de
+    username, ventana horaria de actividad frente a la línea base de la
+    plataforma): esas tres necesitan datos que ningún dataset cargado hoy por
+    `data.py` trae — imágenes de avatar y timestamps de actividad con
+    granularidad horaria (Yelp-NYC solo trae fecha, no hora, de cada review).
+    El dominio de email desechable es la única de las cuatro que se puede
+    verificar hoy con una API real y gratuita, sin inventar ni aproximar un
+    dato que no existe.
+
+    **Columna esperada**: `email_domain_column` (por defecto
+    `"email_domain"`, ver constante `EMAIL_DOMAIN_COLUMN`) — debe traer
+    SOLO el dominio (`"gmail.com"`), nunca la dirección de email completa.
+    **Ningún dataset cargado hoy trae esta columna** (Yelp-NYC no tiene
+    ningún dato de email) — igual que `nivel_b_evidence`, se devuelve un
+    bloque explícito de "sin evidencia", nunca un valor aproximado.
+
+    **Es la única función de este fichero que hace una llamada de red real
+    en tiempo de ejecución** — todo lo demás en `profile_cluster.py` opera
+    solo sobre datos ya cargados en memoria. Por eso:
+    - dominios repetidos dentro del cluster se consultan una sola vez
+      (`_is_disposable_domain` está cacheada con `lru_cache`).
+    - si la consulta falla para uno o más dominios (timeout, red caída,
+      respuesta inesperada), esos dominios se EXCLUYEN del cálculo del
+      ratio — no se cuentan como "no desechable" por defecto, porque eso
+      sesgaría el resultado hacia "cluster limpio" justo cuando falta
+      información. Se reporta explícitamente cuántos y cuáles fallaron
+      (`nota_api_fallida`), igual que el resto del fichero no esconde
+      limitaciones de sus propios cálculos.
+    - reviewers sin dominio de email registrado (nulo o vacío) también se
+      excluyen del ratio, con el mismo criterio y reportados aparte
+      (`nota_dominio_faltante`).
+    """
+    n_cuentas_total = len(np.unique(df.loc[cluster_idx, "reviewer_id"]))
+
+    if email_domain_column not in df.columns:
+        return {
+            "disponible": False,
+            "motivo": (
+                f"El DataFrame no trae la columna '{email_domain_column}' -- "
+                "ningún dataset cargado hoy por data.py (Yelp-NYC) incluye "
+                "dominio de email. No se aproxima a partir de otro campo. "
+                "Solo disponible con datos reales de un cliente que aporte "
+                "este campo en el onboarding (ver CONTEXTO.md, sesión "
+                "2026-09-14)."
+            ),
+            "n_cuentas": n_cuentas_total,
+        }
+
+    sub = (
+        df.loc[cluster_idx, ["reviewer_id", email_domain_column]]
+        .drop_duplicates(subset="reviewer_id")
+        .rename(columns={email_domain_column: "_domain_raw"})
+    )
+    sub["_domain_norm"] = sub["_domain_raw"].astype(str).str.strip().str.lower()
+    tiene_dominio = sub["_domain_raw"].notna() & (sub["_domain_norm"] != "") & (sub["_domain_norm"] != "nan")
+    con_dominio = sub[tiene_dominio]
+    n_sin_dominio = len(sub) - len(con_dominio)
+
+    veredictos: dict[str, bool] = {}
+    dominios_fallidos: set[str] = set()
+    for domain in con_dominio["_domain_norm"].unique():
+        resultado = _is_disposable_domain(domain)
+        if resultado == "error":
+            dominios_fallidos.add(domain)
+        else:
+            veredictos[domain] = resultado == "true"
+
+    evaluables = con_dominio[~con_dominio["_domain_norm"].isin(dominios_fallidos)]
+    n_evaluables = len(evaluables)
+    n_desechables = (
+        int(evaluables["_domain_norm"].map(veredictos).sum()) if n_evaluables else 0
+    )
+    ratio = round(n_desechables / n_evaluables, 4) if n_evaluables else None
+
+    out = {
+        "disponible": True,
+        "n_cuentas": n_cuentas_total,
+        "n_cuentas_con_dominio_email": len(con_dominio),
+        "n_cuentas_evaluadas": n_evaluables,
+        "n_cuentas_dominio_desechable": n_desechables,
+        "ratio_dominio_desechable": ratio,
+    }
+    if n_sin_dominio:
+        out["nota_dominio_faltante"] = (
+            f"{n_sin_dominio}/{n_cuentas_total} cuenta(s) del cluster no "
+            "tienen dominio de email registrado -- excluidas del ratio, no "
+            "contadas como 'no desechable'."
+        )
+    if dominios_fallidos:
+        out["nota_api_fallida"] = (
+            "La consulta a disposable.debounce.io falló (timeout o "
+            f"respuesta inesperada) para {len(dominios_fallidos)} dominio(s): "
+            f"{sorted(dominios_fallidos)} -- excluidos del ratio, no "
+            "asumidos como 'no desechable' por defecto."
+        )
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Ficha de cluster — formato fijado en README.md
 # ---------------------------------------------------------------------------
 
@@ -276,15 +473,20 @@ def build_cluster_card(
     density_backdrop: spmatrix,
     burst_scores: np.ndarray,
     reviewer_counts: pd.Series | None = None,
+    email_domain_column: str = EMAIL_DOMAIN_COLUMN,
 ) -> str:
     """Genera la ficha de texto de un cluster, mismo formato que el ejemplo
-    fijado en README.md ("CLUSTER #7 · ..."). Nivel B se incluye siempre
-    marcado como "sin evidencia" para Yelp-NYC (ver `nivel_b_evidence`), no
-    se omite en silencio.
+    fijado en README.md ("CLUSTER #7 · ..."). Niveles B y D se incluyen
+    siempre, marcados como "sin evidencia" para Yelp-NYC (ver
+    `nivel_b_evidence` / `nivel_d_evidence`), no se omiten en silencio.
 
     `density_backdrop` — ver aviso en `density_vs_configuration_model` y en
     `nivel_a_evidence`: no debe ser el mismo grafo que se usó para definir
     `cluster_idx` (circular).
+
+    `email_domain_column` se pasa tal cual a `nivel_d_evidence` — si el
+    cliente no la tiene, Nivel D sale "sin evidencia" sin ninguna llamada de
+    red (la comprobación de columna es local, antes de tocar la API).
     """
     sub = df.loc[cluster_idx]
     n_cuentas = sub["reviewer_id"].nunique()
@@ -293,6 +495,7 @@ def build_cluster_card(
 
     nivel_a = nivel_a_evidence(df, cluster_idx, net_rtr, density_backdrop, burst_scores, reviewer_counts)
     nivel_b = nivel_b_evidence(df, cluster_idx)
+    nivel_d = nivel_d_evidence(df, cluster_idx, email_domain_column)
 
     sync = nivel_a["sincronia_coreviews"]["sync_multiplier"]
     dens_info = nivel_a["densidad_vs_modelo_configuracion"]
@@ -309,6 +512,26 @@ def build_cluster_card(
     if dens_info.get("aviso"):
         dens_line += f"  [aviso: {dens_info['aviso']}]"
 
+    if nivel_d.get("disponible"):
+        ratio_d = nivel_d["ratio_dominio_desechable"]
+        if ratio_d is not None:
+            dominio_line = (
+                f"DOMINIO EMAIL DESECHABLE (Nivel D)       {_label_es(ratio_d, (0.3, 0.7))}   "
+                f"{nivel_d['n_cuentas_dominio_desechable']}/{nivel_d['n_cuentas_evaluadas']} "
+                f"({ratio_d * 100:.1f}%)"
+            )
+        else:
+            dominio_line = (
+                "DOMINIO EMAIL DESECHABLE (Nivel D)       sin evidencia   "
+                "ningún dominio del cluster fue evaluable (ver notas de la evidencia)"
+            )
+        if nivel_d.get("nota_dominio_faltante"):
+            dominio_line += f"  [{nivel_d['nota_dominio_faltante']}]"
+        if nivel_d.get("nota_api_fallida"):
+            dominio_line += f"  [{nivel_d['nota_api_fallida']}]"
+    else:
+        dominio_line = f"DOMINIO EMAIL DESECHABLE (Nivel D)       sin evidencia   {nivel_d['motivo']}"
+
     lines = [
         f"CLUSTER #{cluster_id} · {n_cuentas} cuentas · {n_reviews} reviews · {n_negocios} negocio(s)",
         "─" * 60,
@@ -322,6 +545,7 @@ def build_cluster_card(
         f"{nivel_a['cuentas_una_sola_review']['n_una_sola_review_en_su_vida']}/{n_cuentas} "
         f"({single_ratio * 100:.1f}%)",
         f"COHORTE (Nivel B)                        sin evidencia   {nivel_b['motivo']}",
+        dominio_line,
         "",
         "No se afirma nacionalidad, origen geográfico, identidad de personas ni quién se beneficia.",
         "Esto es una pista para revisión humana, no un veredicto.",

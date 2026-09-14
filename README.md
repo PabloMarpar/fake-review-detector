@@ -172,9 +172,12 @@ fiable:
   mediado por traducción" como indicador escalar, nunca como etiqueta de idioma.
 - **Nivel D — metadatos**, solo si el cliente los tiene: reutilización de avatar (hash
   perceptual), homogeneidad de username, ventana horaria de actividad frente a la línea base
-  de la plataforma, y **dominio de email desechable** — resuelto por DNS (registros MX) +
-  lista abierta de dominios de usar-y-tirar, procesando solo el dominio (nunca el email
-  completo), reportado agregado por cluster.
+  de la plataforma, y **dominio de email desechable** — implementado (`profile_cluster.py::
+  nivel_d_evidence`, 2026-09-14) contra `disposable.debounce.io`, procesando solo el dominio
+  (nunca el email completo), reportado agregado por cluster (ver "Ideas evaluadas y
+  descartadas" para el porqué de esta API en concreto). Las otras tres señales de este nivel
+  siguen sin implementar — necesitan datos (avatar, timestamps horarios) que ningún dataset
+  público cargado hoy trae.
 
 La ficha usa lenguaje estimativo tipo ICD-203 (probabilidad y confianza, nunca mezcladas en la
 misma frase), muestra siempre sus modelos nulos y termina con un bloque fijo que dice
@@ -236,11 +239,17 @@ es validable de verdad con datos reales de un cliente futuro.
 Se consideraron tres enriquecimientos por email antes de fijar la arquitectura de arriba —
 documentado porque el porqué importa tanto como el qué:
 
-- **Reputación de email (Abstract API, ZeroBounce, DeBounce) → entra, pero sin ninguna de esas
-  APIs.** Ninguna es gratis-para-siempre-sin-fricción (ZeroBounce exige dominio de empresa,
-  DeBounce solo da créditos una vez). En su lugar: DNS directo (registros MX) + una lista
-  abierta de dominios desechables mantenida a diario — gratis de verdad, sin cuenta, y más
-  limpio de cara al RGPD porque solo se procesa el dominio, nunca el email completo.
+- **Reputación de email (Abstract API, ZeroBounce, DeBounce) → sus productos de verificación
+  masiva quedan descartados, sigue en pie el motivo original.** Ninguno es gratis-para-siempre-
+  sin-fricción para ese producto (ZeroBounce exige dominio de empresa, el API de verificación
+  masiva de DeBounce solo da créditos de pago). **Corrección de una sesión posterior
+  (2026-09-14)**: DeBounce sí tiene, aparte de ese producto de pago, un endpoint dedicado y
+  distinto — `disposable.debounce.io` — que solo hace una cosa (decir si un dominio es de
+  usar-y-tirar) y es gratis sin API key ni registro, verificado con llamadas reales. Es el que
+  se usa en `profile_cluster.py::nivel_d_evidence`. Salvedad honesta: su límite de peticiones
+  diarias no está publicado, así que vale para el volumen de un piloto, pero habría que
+  revisarlo si el volumen de producción crece mucho. Procesa solo el dominio, nunca el email
+  completo (regla que se mantiene igual).
 - **"Social footprint" (Seon.io / `holehe`) → descartado, sin matices.** Choca de frente con
   la postura de "nada de perfilar personas más allá de lo defendible". `holehe` explota una
   categoría de vulnerabilidad catalogada por OWASP (enumeración de cuentas), viola los ToS de

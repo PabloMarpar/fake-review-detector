@@ -44,6 +44,17 @@ Fuente de grafo (Fase 1):
   Ver docstring de `load_yelpnyc_dataset` para los hallazgos de verificación
   (cabeceras de columna mal etiquetadas en el mirror, pero datos reales y
   correctos una vez identificado el mapeo real).
+- **bretthollenbeck/fake-reviews-data** — reviews de Amazon con etiqueta de
+  campaña de fraude conocida, grafo reviewer↔producto real (a diferencia de
+  Yelp-Chi/Amazon de arriba) y, novedad en este fichero, una fecha real de
+  inicio de campaña (no un proxy de spam). Repo en GitHub
+  (https://github.com/bretthollenbeck/fake-reviews-data, MIT, solo
+  README+LICENSE) pero el CSV real está alojado aparte, en el WordPress
+  personal del autor — descarga directa sin cuenta. Ver docstring de
+  `load_bretthollenbeck_dataset` para los hallazgos de verificación (dos
+  tipos de etiqueta de fraude que no hay que confundir, y por qué se usa la
+  manual/curada como label principal en vez de la del clasificador
+  automático).
 """
 
 import collections
@@ -66,6 +77,10 @@ ORCG_URL = "https://osf.io/download/3vds7/"
 YELPCHI_URL = "https://github.com/YingtongDou/CARE-GNN/raw/master/data/YelpChi.zip"
 AMAZON_URL = "https://data.dgl.ai/dataset/FraudAmazon.zip"
 YELPNYC_KAGGLE_DATASET = "ahtxham/yelp-nyc-labelled-dataset"
+BRETTHOLLENBECK_URL = (
+    "https://bretthollenbeckcom.wordpress.com/wp-content/uploads/2026/03/"
+    "public_reviews_dataset_cleaned.csv_.zip"
+)
 
 OUTPUT_CSV = BASE_DIR / "reviews_baseline.csv"
 
@@ -329,6 +344,123 @@ def load_yelpnyc_dataset() -> pd.DataFrame:
     )
 
 
+def load_bretthollenbeck_dataset() -> pd.DataFrame:
+    """Descarga y carga el dataset de reviews de Amazon de
+    `bretthollenbeck/fake-reviews-data`
+    (https://github.com/bretthollenbeck/fake-reviews-data, MIT, sin cuenta).
+    El repo de GitHub solo trae README+LICENSE — el CSV real está alojado
+    aparte, en el WordPress personal del autor (descarga directa, sin cuenta
+    ni gate de acceso).
+
+    **Verificado en esta sesión descargando el zip real y cargando el CSV con
+    pandas, no solo leyendo el README del repo** (que además no lista
+    `reviewer_id`/`asin` entre sus columnas — sin bajar el CSV de verdad no
+    habría quedado claro que este dataset sí trae grafo reviewer↔producto
+    construible). Comprobado: 64.369.322 bytes descargados, coinciden exacto
+    con el `Content-Length` del servidor. Mismo patrón de "zip con basura de
+    macOS" que ya usa `load_yelpchi_graph_dataset`: el zip contiene
+    `public_reviews_dataset_cleaned.csv` (280MB descomprimido) +
+    `__MACOSX/._public_reviews_dataset_cleaned.csv` (277 bytes, metadata de
+    Finder sin datos), que se ignora al extraer.
+
+    **Es un dataset centrado en productos con campaña de fraude conocida, no
+    una muestra aleatoria de Amazon** — comprobado: 381.734 reviews pero solo
+    3.389 `asin` únicos (334.342 `reviewer_id` únicos), o sea que cada
+    producto concentra muchísimas reviews/reviewers. Igual que ya se
+    documentó la rareza de tamaño/distribución de Yelp-Chi y Amazon (Dou et
+    al.) en sus propios docstrings de este fichero, no tratar esto como
+    representativo de "Amazon en general". Rango real de `review_date`:
+    2000-06-12 a 2021-01-19.
+
+    **Dos tipos de etiqueta de fraude, no hay que confundirlos**:
+    - `reviewer_classified_fake` / `reviewer_classified_honest` (columnas
+      `bool`, sin nulos): salida de un **clasificador automático de un paper
+      externo** citado en el README del repo original — es una *predicción*,
+      no ground truth. Comprobado: `classified_fake` True en 57.667 filas,
+      `classified_honest` True en 22.614.
+    - `reviewer_labeled_fake` / `reviewer_labeled_honest` (columnas
+      `float64`, con `NaN`): etiqueta **manual/curada — esta sí es ground
+      truth real**, pero mucho más escasa: solo 80.281 de 381.734 filas
+      (21%) la tienen. Comprobado cruzando ambas columnas dentro de esas
+      80.281: 22.138 tienen `fake=1`, 10.802 tienen `honest=1`, y **47.341
+      tienen las dos a 0** (ni fake ni honesto confirmado — no es lo mismo
+      que "sin etiquetar": es un caso que el curador sí miró y no marcó en
+      ningún extremo). Cero filas con las dos a 1 a la vez.
+    - **Este loader usa `reviewer_labeled_fake` (la manual) como label
+      principal para `is_fake`, no la automática** — mismo criterio que ya
+      prioriza la etiqueta de Rayana & Akoglu sobre cualquier proxy en
+      `load_yelpnyc_dataset`. `is_fake` es un booleano *nullable*
+      (`pandas.BooleanDtype`): `True` donde `reviewer_labeled_fake == 1`,
+      `False` donde `reviewer_labeled_fake == 0` (incluye tanto "honesto
+      confirmado" como "ni fake ni honesto confirmado" — usar la columna
+      extra `reviewer_labeled_honest` si hace falta separar esos dos casos),
+      y `pandas.NA` en las 301.453 filas sin etiqueta manual — deliberadamente
+      **no se rellena con `False`**, porque eso diría "no es fake" donde en
+      realidad no hubo ningún juicio manual. `reviewer_classified_fake` y
+      `reviewer_classified_honest` se exponen como columnas extra, sin usarse
+      para calcular `is_fake`.
+
+    **No se pierde la fecha de campaña**: columna extra `campaign_start_date`
+    (de `fake_review_campaign_start_date`, no nula en 143.427 filas) — es la
+    primera fecha de evento real de este proyecto (no un proxy de spam como
+    en Yelp-Chi/Amazon/Yelp-NYC), útil para burst detection en
+    `features_graph.py` más adelante aunque este loader no la usa todavía.
+
+    **No trae fecha de alta de cuenta**: Nivel B del perfilado (README) sigue
+    sin resolverse aquí, igual que en Yelp-Chi/Amazon/Yelp-NYC — no se ha
+    inventado ningún proxy para aparentar que sí.
+
+    9.329 duplicados exactos de `review_text` (2,4%), **no eliminados aquí a
+    propósito**, mismo criterio que `load_yelpnyc_dataset`: quitarlos borraría
+    aristas reviewer-producto reales del grafo, y en este dataset en
+    concreto texto repetido puede ser en sí una señal de campaña coordinada,
+    no solo ruido.
+
+    Devuelve un DataFrame con las columnas estándar de este fichero
+    (`reviewer_id`, `business_id` [de `asin`], `rating`, `date`, `text`,
+    `is_fake`, `source_dataset` fijo a `"bretthollenbeck_amazon"`) más
+    columnas específicas de este dataset que no encajan en el esquema
+    estándar sin perder información: `review_id`, `review_title` (926
+    nulos), `campaign_start_date`, `fake_review_product` (bool: True si el
+    producto tiene una campaña de fraude conocida, en 160.553 filas),
+    `reviewer_classified_fake`, `reviewer_classified_honest`,
+    `reviewer_labeled_honest`, `review_is_removed_by_amazon` (float64 con
+    NaN: False en 256.614, True en 38.945, NaN en 86.175 — el propio dataset
+    no documenta el motivo de esos nulos). Sin columna `generator`: son
+    reviews humanas (reales o de reviewers pagados dentro de una campaña),
+    no generadas por ningún LLM conocido.
+    """
+    zip_path = _download(BRETTHOLLENBECK_URL, RAW_DIR / "bretthollenbeck_reviews.zip")
+    csv_path = RAW_DIR / "public_reviews_dataset_cleaned.csv"
+    if not csv_path.exists():
+        with zipfile.ZipFile(zip_path) as zf:
+            zf.extract("public_reviews_dataset_cleaned.csv", RAW_DIR)
+
+    df = pd.read_csv(csv_path, low_memory=False)
+
+    is_fake = df["reviewer_labeled_fake"].map({1.0: True, 0.0: False}).astype("boolean")
+
+    return pd.DataFrame(
+        {
+            "reviewer_id": df["reviewer_id"],
+            "business_id": df["asin"],
+            "rating": df["review_rating"],
+            "date": df["review_date"],
+            "text": df["review_text"],
+            "is_fake": is_fake,
+            "source_dataset": "bretthollenbeck_amazon",
+            "review_id": df["review_id"],
+            "review_title": df["review_title"],
+            "campaign_start_date": df["fake_review_campaign_start_date"],
+            "fake_review_product": df["fake_review_product"],
+            "reviewer_classified_fake": df["reviewer_classified_fake"],
+            "reviewer_classified_honest": df["reviewer_classified_honest"],
+            "reviewer_labeled_honest": df["reviewer_labeled_honest"],
+            "review_is_removed_by_amazon": df["review_is_removed_by_amazon"],
+        }
+    )
+
+
 def build_baseline_dataset() -> pd.DataFrame:
     ott = load_ott_corpus()
     orcg = load_orcg_dataset()
@@ -382,3 +514,12 @@ if __name__ == "__main__":
     print(f"Negocios: {yelpnyc['business_id'].nunique()} (publicado: 923) | "
           f"Reviewers: {yelpnyc['reviewer_id'].nunique()} (publicado: 160.225)")
     print(yelpnyc["is_fake"].value_counts(normalize=True))
+
+    print("\n--- bretthollenbeck/fake-reviews-data (texto + grafo, Fase 1) ---")
+    bh = load_bretthollenbeck_dataset()
+    print(f"Filas: {len(bh)}")
+    print(f"Productos (asin): {bh['business_id'].nunique()} | "
+          f"Reviewers: {bh['reviewer_id'].nunique()}")
+    print("is_fake (label manual, con NA = sin etiquetar):")
+    print(bh["is_fake"].value_counts(dropna=False))
+    print(f"Con campaign_start_date: {bh['campaign_start_date'].notna().sum()}")
