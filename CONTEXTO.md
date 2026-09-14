@@ -1299,6 +1299,109 @@ y fusionó igual las claves `t1_own_corpus`/`t3_own_corpus` en el `outputs/metri
 esto, el resultado se habría quedado atrapado en el worktree y habría revertido silenciosamente el
 trabajo de Fase 1 si se hubiera sobrescrito sin más.
 
+## Grafo + burst detection sobre bretthollenbeck/Amazon (2026-09-14)
+
+Con el cuarto dataset de grafo ya cargado en `data.py`
+(`load_bretthollenbeck_dataset()`), esta sesión completó las dos líneas de
+trabajo pendientes en `features_graph.py`: (1) construir el grafo y evaluarlo
+contra el label real, y (2) usar `campaign_start_date` (fecha real de
+campaña de fraude, no proxy) para burst detection. Verificado ejecutando el
+código de verdad dos veces (`python features_graph.py bretthollenbeck`), no
+solo en scripts exploratorios sueltos — la segunda vez tras corregir un bug
+real encontrado en la primera ejecución (ver abajo).
+
+**Decisión de diseño sin precedente en el proyecto — label parcial (21% de
+las filas)**: a diferencia de Yelp-Chi/Amazon (Dou et al.) y Yelp-NYC (label
+en el 100% de nodos/filas), aquí `is_fake` solo existe en 80.281 de 381.734
+filas. Se construyen los grafos (`net_rur`/`net_rtr`/`net_rsr`/`net_homo`,
+mismo patrón de incidencia dispersa que `build_yelpnyc_graphs`) con las
+**381.734 filas completas** (las no etiquetadas también son comportamiento
+real, excluirlas rompería aristas), pero la evaluación
+(`evaluate_communities`/LOO-AUC/top-k/enrichment) se hace **solo sobre el
+subconjunto etiquetado**, vía una función nueva,
+`project_communities_to_labeled_subset`, que reindexa las comunidades ya
+calculadas sobre el grafo completo al subconjunto con label real —
+reutiliza `evaluate_communities` tal cual, sin duplicar lógica.
+
+**Hallazgo de escala real, distinto al de Yelp-NYC**: `net_rsr` (mismo
+negocio+rating, sin ventana) tiene aquí "solo" 23,66M aristas no dirigidas
+(14.839 grupos) frente a las ~73M de Yelp-NYC — medido con una sonda
+dedicada antes de lanzar nada a ciegas (mismo criterio ya usado en el
+proyecto): construir el grafo de `networkx` tardó 81,56s (RSS 11,5GB) y
+Louvain 229,38s más (~3,8 min, RSS 9,7GB) — **viable en esta máquina
+(31,5GB RAM)**, a diferencia de Yelp-NYC. Louvain confirmó, corriéndolo de
+verdad y no por extrapolación como en Yelp-NYC, que la partición óptima es
+exactamente `groupby(["business_id", "rating"])` (14.839 comunidades en
+ambos casos, coincidencia exacta) — el pipeline final usa igualmente el
+atajo de `groupby_cliques_as_communities` (1,1s) por eficiencia, no porque
+Louvain fuera inviable esta vez.
+
+**Resultados (LOO-AUC, solo subset etiquetado) frente a Yelp-NYC**:
+
+| Señal | Yelp-NYC | bretthollenbeck/Amazon |
+|---|---|---|
+| `net_rur` (mismo reviewer) | 0,9046 | **0,9975** |
+| `net_rtr` (negocio+rating+semana) | 0,5526 | 0,6777 |
+| `net_rsr` (negocio+rating) | 0,6296 | 0,7336 |
+| `net_homo` (unión, mismo muro de memoria/señal inútil) | 0,0016 | 0,0133 |
+
+Todas las señales van en la misma dirección que Yelp-NYC pero más altas —
+lectura honesta: no es que la metodología sea mejor en Amazon, es que este
+dataset está construido *a propósito* alrededor de 3.389 productos con
+campaña de fraude ya conocida (no una muestra aleatoria), así que la señal
+está menos diluida por ruido genuino. **`net_rur` sale en la dirección
+OPUESTA a Yelp-NYC**: aquí, a más reviews del mismo `reviewer_id`, MÁS
+probabilidad de fraude (4,6% con 1 review → 100% con 32+), justo lo
+contrario de Yelp-NYC (22% con 1 review → 0,66% con 64+, reviewers
+prolíficos genuinos tipo "Yelp Elite"). Confirma que esa señal no se puede
+leer con una regla universal — depende del dominio/dataset.
+
+**Burst detection con `campaign_start_date` real — primera vez en el
+proyecto con un evento de fecha conocida, no un proxy.** 1.449 productos
+(de 3.389) tienen fecha de campaña conocida, 143.427 filas. Tres preguntas
+respondidas con datos reales:
+
+1. ¿El volumen se dispara alrededor de la fecha? Sí: tasa de fraude sube de
+   ~21-28% (lejos de la fecha) a 63,6% en la semana de inicio de campaña,
+   con caída gradual a ambos lados — patrón temporal real, no un solo bin.
+2. ¿El burst detectado por z-score genérico (mismo mecanismo que
+   `detect_bursts_yelpnyc`, sin usar la fecha) coincide con la fecha real?
+   Parcialmente: el pico de z-score de cada producto cae dentro de ±30 días
+   de la fecha real en el 44,9% de los casos, dentro de ±90 días en el
+   73,4% (mediana de distancia: 38 días).
+3. ¿Ese burst correlaciona con `is_fake`? **Aquí el hallazgo es matizado**:
+   el z-score genérico da AUC 0,552 (débil, mismo orden que el 0,5315 de
+   Yelp-NYC), pero usar directamente la **proximidad temporal a la fecha
+   real conocida** (`campaign_proximity_score`, `-abs(días desde
+   campaign_start_date)`) da **AUC 0,6504** — top-5%/10%/20% con precisión
+   0,60-0,62, lift ~1,7x. Conclusión honesta: conocer la fecha real del
+   evento y medir distancia a ella es una señal mejor que intentar detectar
+   el burst por volumen anómalo sin esa fecha (el volumen se diluye con
+   compras/reviews genuinas coincidentes en el tiempo).
+
+**Bug real encontrado y corregido al ejecutar de verdad, no hipotético**:
+`sanity_check_burst_auc` (ya existente, escrita para Yelp-NYC) asume
+`is_fake` sin `NA` — al pasarle el subconjunto de bretthollenbeck (booleano
+*nullable*), `roc_auc_score` revienta con `TypeError: boolean value of NA
+is ambiguous`. Corregido en `run_bretthollenbeck_analysis` calculando el
+AUC a mano filtrado al subconjunto etiquetado, sin tocar la función
+original (sigue siendo válida tal cual para Yelp-NYC).
+
+**Funciones nuevas en `features_graph.py`** (no se tocó `data.py`,
+`profile_cluster.py` ni `train.py`, fuera de alcance de esta tarea):
+`project_communities_to_labeled_subset`, `build_bretthollenbeck_graphs`,
+`campaign_proximity_score`, `campaign_burst_peak_distance`,
+`summarize_campaign_burst_alignment`, `sanity_check_campaign_proximity_auc`,
+`run_bretthollenbeck_analysis` (target nuevo del CLI: `python
+features_graph.py bretthollenbeck`).
+
+**Pendiente, anotado para cuando se retome, no implementado ahora**:
+`profile_cluster.py` podría incorporar `campaign_proximity_score` como una
+señal nueva de Nivel A, pero solo aplicaría a clientes que sepan la fecha
+de una campaña sospechada — no es un campo universal como `created_at`. El
+contraste de `net_rur` (opuesto entre Yelp-NYC y este dataset) refuerza no
+fundir nunca esa señal en un número único sin contexto de dominio.
+
 ## Fuentes de referencia rápida
 
 - Arquitectura completa, roadmap por fases, líneas rojas sobre atribución, y las ideas
