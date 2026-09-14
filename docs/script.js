@@ -106,10 +106,12 @@ function wireContactForm() {
     event.preventDefault();
     const data = new FormData(form);
 
+    // FormData posted as-is (browser sets the multipart boundary itself) so
+    // file fields like the CSV upload survive the submission — a manually
+    // built urlencoded body silently drops file inputs.
     fetch("/", {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams(data).toString(),
+      body: data,
     })
       .then(() => {
         form.hidden = true;

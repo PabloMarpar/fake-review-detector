@@ -54,7 +54,7 @@
       <a href="como-funciona.html">Cómo funciona</a>
       <a href="blog/index.html">Blog</a>
     </nav>
-    <a class="btn btn-primary" href="#acceso">Acceso anticipado</a>
+    <a class="btn btn-primary" href="#acceso">Prueba gratis</a>
   </div>
 </header>
 
@@ -71,7 +71,7 @@
         con un informe de evidencia exportable, no con una etiqueta a ciegas.
       </p>
       <div class="hero-actions">
-        <a class="btn btn-primary" href="#acceso">Solicitar acceso anticipado</a>
+        <a class="btn btn-primary" href="#acceso">Probar gratis con tus reviews</a>
         <a class="btn btn-ghost" href="#preview">Ver cómo funciona</a>
       </div>
     </div>
@@ -227,15 +227,18 @@
     </div>
   </section>
 
-  <!-- CTA -->
+  <!-- Prueba gratuita -->
   <section id="acceso">
     <div class="wrap">
       <div class="form-panel reveal">
-        <h2>Sé de los primeros en probarlo</h2>
-        <p class="lede" style="margin-bottom:0;">Estamos cerrando los primeros pilotos. Déjanos tu email y te avisamos en cuanto haya hueco.</p>
+        <h2>Pruébalo gratis con tus propias reviews</h2>
+        <p class="lede" style="margin-bottom:0;">
+          Sube hasta 100 reviews en CSV y te devolvemos un informe real: qué reviews parecen
+          genuinas, cuáles son sospechosas y por qué. Sin coste, sin compromiso.
+        </p>
 
-        <form class="contact" name="acceso-anticipado" method="POST" data-netlify="true" netlify-honeypot="empresa-web">
-          <input type="hidden" name="form-name" value="acceso-anticipado" />
+        <form class="contact" name="prueba-gratuita" method="POST" data-netlify="true" netlify-honeypot="empresa-web" enctype="multipart/form-data">
+          <input type="hidden" name="form-name" value="prueba-gratuita" />
           <p hidden>
             <label>No rellenar: <input name="empresa-web" /></label>
           </p>
@@ -255,11 +258,16 @@
             <input id="web" name="web" type="text" placeholder="tumarketplace.com" />
           </div>
           <div>
-            <button class="btn btn-primary" type="submit">Quiero acceso anticipado</button>
-            <p class="form-note">Sin spam. Solo te escribimos cuando haya hueco para un piloto.</p>
+            <label for="csv">Tus reviews (CSV, hasta 100 filas)</label>
+            <input id="csv" name="csv" type="file" accept=".csv" required />
+            <p class="form-note">Con una columna de texto de review basta. Si incluyes usuario y fecha, el informe sale más completo.</p>
+          </div>
+          <div>
+            <button class="btn btn-primary" type="submit">Enviar y recibir mi informe</button>
+            <p class="form-note">Sin spam. Tus datos se usan solo para generar tu informe. Respondemos por email en menos de 48h laborables.</p>
           </div>
         </form>
-        <p class="form-success">Gracias — te escribiremos en cuanto haya hueco.</p>
+        <p class="form-success">Gracias — recibirás tu informe por email en menos de 48h laborables.</p>
       </div>
     </div>
   </section>
@@ -269,7 +277,7 @@
 <footer>
   <div class="wrap">
     <span>CheckGraph — <a href="mailto:contacto@checkgraph.dev">contacto@checkgraph.dev</a></span>
-    <span>En desarrollo activo. Detección de texto por IA validada; grafo de cuentas coordinadas en marcha.</span>
+    <span>Detección de reseñas falsas y redes de proveedores coordinados para marketplaces.</span>
   </div>
 </footer>
 
