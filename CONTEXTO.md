@@ -1900,38 +1900,86 @@ para poder ejecutarlo él mismo en Colab.
 **No ejecutado todavía en GPU real** — pendiente de que el usuario lo corra en Colab. Tiempo
 estimado (extrapolado, no cronometrado en T4 real): Parte A ~20-35 min, Parte B ~10-30 min.
 
-## Fase 2 (agregación de vecindario sobre árboles) — arrancada y puesta en pausa (2026-09-15)
+## Fase 2 (agregación de vecindario sobre árboles) — resultado real, positivo (2026-09-15)
 
-El usuario pidió empezar la Fase 2 mientras el notebook de la Fase 1 (`bwgnn_v2.ipynb`) corre
-en Colab, y luego pidió pararla antes de ejecutar nada. Estado real, para retomar sin perder el
-hilo:
+Implementa la técnica de **GADBench** (NeurIPS 2023, arXiv 2306.12251): agregar (media/máximo/
+desviación estándar/tamaño de grupo, todo **leave-one-out**) las features de los vecinos de cada
+nodo en cada relación, y dárselo a un árbol (LightGBM) junto con las features propias.
+Label-free por construcción -- agrega features, nunca etiquetas, a diferencia de `net_rur`/
+`net_rtr`/`net_rsr` (target encoding, ya descartado para producto).
 
-- **`features_neighborhood.py` (fichero nuevo) — escrito pero NUNCA ejecutado ni verificado.**
-  A diferencia del resto del código de este proyecto, aquí **no se ha corrido ni una sola vez**
-  — nada de lo que sigue está confirmado con datos reales, es diseño sin probar.
-- Implementa la técnica de **GADBench** (NeurIPS 2023, arXiv 2306.12251): agregar
-  (media/máximo/desviación estándar/tamaño, todo **leave-one-out**) las features de los vecinos
-  de cada nodo en cada relación, y dárselo a un árbol (LightGBM) junto con las features propias.
-  Label-free por construcción — agrega features, nunca etiquetas.
-- **Único dato verificado de esta sesión, con código real ejecutado**: antes de escribir el
-  módulo se comprobó si `net_rur`/`net_rtr`/`net_rsr` de **YelpChi** (las precalculadas por
-  CARE-GNN, no las de Yelp-NYC) son cliques disjuntos exactos, igual que ya se sabía de
-  Yelp-NYC. Resultado real (`verify_clique_relation` sobre las tres relaciones): **`net_rur` y
-  `net_rsr` sí son cliques exactos (0% de discrepancia), pero `net_rtr` NO lo es (95,07% de los
-  nodos con grado distinto al esperado de un clique)** — la relación temporal de CARE-GNN se
-  construye de otra forma, no investigada más allá de constatar que no es un clique. Por eso
-  `features_neighborhood.py` implementa dos caminos: `neighbor_agg_groupby` (rápido, para
-  relaciones clique) y `neighbor_agg_sparse` (general, vía matrices sparse, para las que no lo
-  son) — necesarios los dos para YelpChi, solo el primero hace falta para Yelp-NYC (sus tres
-  relaciones sí son cliques, ya verificado en sesiones anteriores).
-- Pensado para reutilizar `data_bundles/yelpnyc_bundle.npz` (ya construido para la Fase 1) en
-  vez de recalcular las 24 features de Yelp-NYC desde cero.
-- **Pendiente, en orden, cuando se retome** (nada de esto se ha hecho): (1) correr
-  `python features_neighborhood.py yelpchi` y comparar el delta de AP contra el ~+7 puntos de
-  AUPRC que mide GADBench (no perseguir el valor absoluto, el protocolo es distinto); (2) si el
-  delta aparece, correr `python features_neighborhood.py yelpnyc` con protocolo estricto
-  (split agrupado por reviewer, ya implementado en el módulo) y comparar contra el 0,8448/0,3866
-  de referencia; (3) solo entonces decidir si esta vía sustituye o complementa a BWGNN (Fase 1).
+**`features_neighborhood.py` (fichero nuevo)**, con dos caminos según si la relación es una
+unión de cliques disjuntos exactos: `neighbor_agg_groupby` (rápido, vectorizado con
+`np.bincount`/ordenación, sin bucles Python) para relaciones clique, y `neighbor_agg_sparse`
+(multiplicación de matriz sparse) para las que no lo son.
+
+**Dato real comprobado antes de asumir nada** (`verify_clique_relation`, sobre las relaciones
+precalculadas por CARE-GNN en YelpChi, no las de Yelp-NYC): **`net_rur` y `net_rsr` sí son
+cliques exactos (0% de discrepancia), pero `net_rtr` NO lo es (95,07% de los nodos con grado
+distinto al esperado de un clique)** -- a diferencia de Yelp-NYC, donde las tres relaciones
+propias sí son cliques. Por eso hacían falta los dos caminos.
+
+**Verificación exhaustiva antes de ejecutar sobre datos reales** (código nunca antes probado):
+- `neighbor_agg_groupby` y `neighbor_agg_sparse` verificados contra referencias lentas pero
+  obviamente correctas (bucle Python explícito por fila), incluyendo casos límite (empates
+  exactos en el máximo, grupos de tamaño 1, nodos totalmente aislados) -- coinciden hasta el
+  redondeo de float32.
+- **Se encontró y corrigió un problema real de rendimiento, no de corrección**: la primera
+  versión de `max_loo` usaba `groupby().apply(lambda...)` de pandas, correcto mátemáticamente
+  (verificado) pero inviable a la escala de Yelp-NYC (160.225 grupos de reviewer -- habría
+  tardado minutos por columna). Sustituido por una versión vectorizada basada en ordenación
+  (`np.lexsort` + posiciones de fin de grupo), sin bucles ni `apply`, verificada de nuevo
+  contra la referencia lenta tras el cambio.
+- `drop_degenerate_columns` (filtra columnas constantes y duplicadas por correlación) también
+  se reescribió para calcular la matriz de correlación completa de una vez (BLAS) en vez de un
+  `corrcoef` por par -- la versión ingenua habría tardado minutos con cientos de columnas.
+
+**Resultado real, YelpChi** (`python features_neighborhood.py yelpchi`, split 70/30
+estratificado seed=42, LightGBM):
+
+| | AUC | AP |
+|---|---|---|
+| Solo 32 features crudas | 0,9402 | 0,7968 |
+| **+ agregación de vecindario** (399 columnas tras filtro de degeneración) | **0,9702** | **0,8909** |
+| Referencia GADBench (XGBoost optimizado, otro protocolo, split 70%) | -- | 84,00 → 91,11 |
+
+**Delta propio +9,41 puntos de AP, por encima del +7,11 de GADBench** -- y los valores absolutos
+(79,68 → 89,09 en escala 0-100) quedan sorprendentemente cerca del 84,00 → 91,11 publicado, pese
+a usar LightGBM con hiperparámetros por defecto en vez de XGBoost optimizado. La técnica
+reproduce el hallazgo del paper con holgura.
+
+**Resultado real, Yelp-NYC** (`python features_neighborhood.py yelpnyc`, reutilizando
+`data_bundles/yelpnyc_bundle.npz`): 315 columnas agregadas → 245 tras el filtro de degeneración
+(42 varianza cero, 28 duplicadas -- muy cerca de las ~72 columnas degeneradas ya predichas en la
+sesión anterior por construcción, de las features de reviewer/negocio bajo su propia relación).
+
+| Split | Modelo | AUC | AP | Cold-start AUC | Cold-start AP |
+|---|---|---|---|---|---|
+| Aleatorio | Solo 24 features (ya documentado) | 0,8448 | 0,3866 | 0,6632 | 0,3668 |
+| Aleatorio | **+ vecindario** | 0,8544 | 0,4146 | 0,6737 | 0,3817 |
+| **Agrupado por reviewer (protocolo estricto)** | Solo 24 features | 0,8307 | 0,3606 | 0,6603 | 0,3719 |
+| **Agrupado por reviewer (protocolo estricto)** | **+ vecindario** | **0,8425** | **0,3894** | **0,6677** | **0,3808** |
+
+**Mejora real y por encima del umbral de ruido en las dos versiones del split** (+0,0280 AP en
+aleatorio, +0,0288 AP en agrupado -- consistente, no es un artefacto de la fuga de identidad de
+grupo). Bajo protocolo estricto (la cifra oficial acordada), la agregación de vecindario sube el
+label-free de Yelp-NYC de **0,8307/0,3606 a 0,8425/0,3894**, y en cold-start de 0,6603/0,3719 a
+0,6677/0,3808. Menor que el salto de YelpChi (dataset con relaciones más densas y limpias), pero
+real y medido con el protocolo correcto.
+
+**Hallazgo de interpretabilidad nuevo**: además de `reviewer_active_life_days` (que sigue
+dominando, como ya se sabía), las siguientes features más importantes del modelo con vecindario
+son `rev__text_max_sim_business_diff_reviewer__max_loo` y `rev__text_length_words__max_loo/
+mean_loo` -- es decir, **cuánto varía la longitud/similitud de texto de un reviewer respecto a
+sus OTRAS reviews** es una señal real que ninguna feature anterior capturaba (las estadísticas de
+reviewer existentes no miraban variabilidad de texto entre sus propias reviews).
+
+Guardado en `outputs/metrics_neighborhood.json` (claves `yelpchi_neighborhood_calibration` y
+`yelpnyc_neighborhood_evaluation`, con importancias de features completas).
+
+**Pendiente, no hecho en esta sesión**: el salto multi-relación (`business_id → reviewer_id`,
+mencionado en el plan) y decidir si esta vía se combina con BWGNN (Fase 1, aún sin resultado de
+Colab) o se usa como alternativa más barata -- BWGNN sigue sin ejecutarse en GPU real.
 
 ## Fuentes de referencia rápida
 

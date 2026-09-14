@@ -130,53 +130,54 @@ def neighbor_agg_groupby(X: np.ndarray, group_ids: np.ndarray, feature_names: li
     missing a la rama que más reduce la pérdida).
     """
     n = len(group_ids)
-    groups = pd.Series(group_ids)
-    size = groups.map(groups.value_counts())
-    size_arr = size.to_numpy().astype(np.float64)
-    loo_denom = size_arr - 1.0
+    n_groups = int(group_ids.max()) + 1 if n else 0
+    # group_ids se asume denso 0..n_groups-1 (viene de connected_components o de
+    # np.unique(..., return_inverse=True) en los dos sitios que llaman a esta
+    # funcion) -- bincount es entonces el tamaño de cada grupo directamente.
+    size_by_group = np.bincount(group_ids, minlength=n_groups).astype(np.float64)
+    size_arr = size_by_group[group_ids]
+    loo_denom = np.maximum(size_arr - 1.0, 1e-9)
     singleton = size_arr <= 1
 
     out: dict[str, np.ndarray] = {f"{prefix}__group_size": size_arr.astype(np.float32)}
 
-    grouped = None  # se construye perezosamente col a col para no duplicar memoria
     for j, name in enumerate(feature_names):
         x = X[:, j].astype(np.float64)
-        s = pd.Series(x)
-        g = s.groupby(groups)
-        sum1 = g.transform("sum").to_numpy()
-        sum2 = g.transform(lambda v: (v ** 2).sum()).to_numpy() if False else None
-        # sum(x^2) por grupo, vectorizado sin apply (mucho más rápido):
-        sq = pd.Series(x ** 2).groupby(groups).transform("sum").to_numpy()
 
-        mean_loo = np.where(singleton, np.nan, (sum1 - x) / np.maximum(loo_denom, 1e-9))
-        var_loo = (sq - x ** 2) / np.maximum(loo_denom, 1e-9) - mean_loo ** 2
-        var_loo = np.clip(var_loo, 0.0, None)
+        sum1_by_group = np.bincount(group_ids, weights=x, minlength=n_groups)
+        sum2_by_group = np.bincount(group_ids, weights=x ** 2, minlength=n_groups)
+        sum1 = sum1_by_group[group_ids]
+        sum2 = sum2_by_group[group_ids]
+
+        mean_loo = np.where(singleton, np.nan, (sum1 - x) / loo_denom)
+        var_loo = np.clip((sum2 - x ** 2) / loo_denom - mean_loo ** 2, 0.0, None)
         std_loo = np.where(singleton, np.nan, np.sqrt(var_loo))
 
-        # Top-2 por grupo para el maximo LOO: si el propio nodo es el maximo
-        # del grupo, el LOO-max es el segundo mayor; si no, es el maximo tal cual.
-        order = np.lexsort((x, group_ids))  # ordena por grupo, luego por valor
+        # Maximo LOO, vectorizado (sin bucles ni groupby.apply -- a 359k filas y
+        # 160k grupos, un apply por grupo tardaria minutos en vez de una
+        # fraccion de segundo). Ordena cada grupo de menor a mayor; la ultima
+        # posicion de cada bloque es el maximo del grupo, la penultima el
+        # maximo LOO para EL NODO QUE OCUPA esa ultima posicion (para todos
+        # los demas nodos del grupo, el maximo LOO sigue siendo el maximo del
+        # grupo, da igual si hay empates: si dos nodos empatan al maximo, la
+        # penultima posicion tiene el mismo valor que la ultima, asi que el
+        # nodo que "pierde" su propio valor ve igualmente ese valor en el otro).
+        order = np.lexsort((x, group_ids))  # agrupa por group_ids, ordena x asc. dentro
         sorted_groups = group_ids[order]
         sorted_x = x[order]
-        # último de cada grupo = maximo; penultimo = segundo maximo (o -inf si size==1)
-        is_last = np.r_[sorted_groups[1:] != sorted_groups[:-1], True]
-        is_first = np.r_[True, sorted_groups[1:] != sorted_groups[:-1]]
-        max_val = np.empty(n)
-        second_max_val = np.empty(n)
-        max_val[order[is_last]] = sorted_x[is_last]
-        # segundo mayor: el valor justo antes del ultimo, si no es tambien el primero
-        prev_idx = np.where(is_last)[0] - 1
-        valid_prev = prev_idx >= 0
-        last_group_start = np.where(is_last)[0] - np.diff(np.r_[-1, np.where(is_first)[0]], prepend=-1)
-        # Enfoque mas simple y robusto: reconstruir segundo maximo por grupo con pandas.
-        s_sorted = pd.Series(sorted_x, index=sorted_groups)
-        second_max_by_group = s_sorted.groupby(level=0).apply(
-            lambda v: v.iloc[-2] if len(v) > 1 else np.nan
-        )
-        max_by_group = s_sorted.groupby(level=0).max()
-        max_map = groups.map(max_by_group).to_numpy()
-        second_max_map = groups.map(second_max_by_group).to_numpy()
-        max_loo = np.where(x >= max_map, second_max_map, max_map)
+        is_group_end = np.r_[sorted_groups[1:] != sorted_groups[:-1], True]
+        end_positions = np.flatnonzero(is_group_end)  # una por grupo, en orden 0..n_groups-1
+        group_max_by_group = sorted_x[end_positions]
+        has_second = size_by_group[size_by_group > 0] >= 2  # alineado con end_positions
+        second_by_group = np.full(n_groups, np.nan)
+        second_positions = end_positions[has_second] - 1
+        second_by_group[size_by_group >= 2] = sorted_x[second_positions]
+
+        group_max_per_row = group_max_by_group[group_ids]
+        second_per_row = second_by_group[group_ids]
+        is_max_holder = np.zeros(n, dtype=bool)
+        is_max_holder[order[end_positions]] = True
+        max_loo = np.where(is_max_holder, second_per_row, group_max_per_row)
         max_loo = np.where(singleton, np.nan, max_loo)
 
         deviation = x - mean_loo
@@ -260,29 +261,27 @@ def drop_degenerate_columns(df: pd.DataFrame, corr_threshold: float = 0.999,
     zero_var_cols = variances[variances.fillna(0.0) < 1e-12].index.tolist()
     df = df.drop(columns=zero_var_cols)
 
-    # Correlacion con columnas YA vistas (orden estable de izquierda a derecha).
-    keep = []
-    seen = []
-    corr_dropped = []
-    filled = df.fillna(0.0)
-    for col in df.columns:
-        v = filled[col].to_numpy()
-        is_dup = False
-        if np.std(v) > 1e-12:
-            for kept_col, kept_v in seen:
-                denom = np.std(v) * np.std(kept_v)
-                if denom < 1e-12:
-                    continue
-                corr = float(np.corrcoef(v, kept_v)[0, 1])
-                if abs(corr) >= corr_threshold:
-                    is_dup = True
-                    break
-        if is_dup:
-            corr_dropped.append(col)
-        else:
-            keep.append(col)
-            seen.append((col, v))
+    # Matriz de correlacion de una sola vez (BLAS), no un corrcoef por par --
+    # con cientos de columnas y cientos de miles de filas, un bucle Python
+    # con un corrcoef por par tardaria minutos; esto tarda segundos.
+    filled = df.fillna(0.0).to_numpy(dtype=np.float64)
+    stds = filled.std(axis=0)
+    corr = np.corrcoef(filled, rowvar=False)
+    corr = np.nan_to_num(corr, nan=0.0)  # columnas con std=0 ya se filtraron, pero por si acaso
 
+    keep_mask = np.ones(filled.shape[1], dtype=bool)
+    cols = list(df.columns)
+    for j in range(len(cols)):
+        if not keep_mask[j]:
+            continue
+        # Marca como duplicada cualquier columna POSTERIOR muy correlacionada
+        # con esta (ya aceptada) -- conserva la primera de cada grupo, igual
+        # que el orden estable de la version anterior.
+        dup = (np.abs(corr[j, j + 1:]) >= corr_threshold)
+        keep_mask[j + 1:][dup] = False
+
+    keep = [c for c, k in zip(cols, keep_mask) if k]
+    corr_dropped = [c for c, k in zip(cols, keep_mask) if not k]
     result = df[keep]
     if verbose:
         print(f"Filtro de degeneración: {n0} -> {result.shape[1]} columnas "
