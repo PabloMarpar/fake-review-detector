@@ -1,0 +1,249 @@
+{
+  "speagle_yelpnyc": {
+    "dataset": "Yelp-NYC (Rayana & Akoglu)",
+    "n_reviews": 359052,
+    "n_users": 160225,
+    "n_products": 923,
+    "base_rate_dataset_completo": 0.1027,
+    "epsilon": 0.15,
+    "damping": 0.5,
+    "max_iter": 150,
+    "lbp_converged": true,
+    "lbp_n_iterations": 67,
+    "lbp_delta_history": [
+      0.435827,
+      0.395441,
+      0.452398,
+      0.490256,
+      0.536481,
+      0.525833,
+      0.539461,
+      0.541567,
+      0.571414,
+      0.555171,
+      0.536446,
+      0.583021,
+      0.574667,
+      0.576106,
+      0.541576,
+      0.610314,
+      0.571636,
+      0.549508,
+      0.541908,
+      0.553907,
+      0.570225,
+      0.6048,
+      0.569065,
+      0.635573,
+      0.60133,
+      0.5917,
+      0.589622,
+      0.583267,
+      0.549513,
+      0.4719,
+      0.529805,
+      0.542781,
+      0.486273,
+      0.333149,
+      0.322362,
+      0.364564,
+      0.393893,
+      0.250314,
+      0.332927,
+      0.211547,
+      0.156358,
+      0.117745,
+      0.125291,
+      0.117731,
+      0.122434,
+      0.110774,
+      0.088129,
+      0.065398,
+      0.045779,
+      0.031564,
+      0.027391,
+      0.022132,
+      0.016993,
+      0.012567,
+      0.009029,
+      0.00634,
+      0.004368,
+      0.002961,
+      0.001979,
+      0.001307,
+      0.000854,
+      0.000552,
+      0.000354,
+      0.000225,
+      0.000142,
+      8.9e-05
+    ],
+    "timings_s": {
+      "load_data": 4.74,
+      "compute_priors": 5.39,
+      "lbp": 65.17
+    },
+    "metrics_test_30pct": {
+      "name": "Yelp-NYC, held-out 30% (protocolo est\u00e1ndar del proyecto)",
+      "n": 107716,
+      "n_fraud": 11066,
+      "base_rate": 0.1027,
+      "auc": 0.7025,
+      "ap": 0.1982,
+      "topk": {
+        "0.01": {
+          "k": 1077,
+          "precision": 0.2934,
+          "recall": 0.0286,
+          "lift_vs_base_rate": 2.86
+        },
+        "0.05": {
+          "k": 5386,
+          "precision": 0.2503,
+          "recall": 0.1218,
+          "lift_vs_base_rate": 2.44
+        },
+        "0.1": {
+          "k": 10772,
+          "precision": 0.2345,
+          "recall": 0.2283,
+          "lift_vs_base_rate": 2.28
+        }
+      }
+    },
+    "metrics_full_dataset": {
+      "name": "Yelp-NYC, dataset completo (referencia, no comparable 1:1 con el held-out)",
+      "n": 359052,
+      "n_fraud": 36885,
+      "base_rate": 0.1027,
+      "auc": 0.7014,
+      "ap": 0.1987,
+      "topk": {
+        "0.01": {
+          "k": 3591,
+          "precision": 0.3038,
+          "recall": 0.0296,
+          "lift_vs_base_rate": 2.96
+        },
+        "0.05": {
+          "k": 17953,
+          "precision": 0.2552,
+          "recall": 0.1242,
+          "lift_vs_base_rate": 2.48
+        },
+        "0.1": {
+          "k": 35905,
+          "precision": 0.2352,
+          "recall": 0.229,
+          "lift_vs_base_rate": 2.29
+        }
+      }
+    },
+    "metrics_cold_start_test_30pct": {
+      "name": "Yelp-NYC, held-out 30% -- SOLO reviewers con 1 sola review en TODO el dataset",
+      "n": 31967,
+      "n_fraud": 7038,
+      "base_rate": 0.2202,
+      "auc": 0.5414,
+      "ap": 0.2498,
+      "topk": {
+        "0.01": {
+          "k": 320,
+          "precision": 0.325,
+          "recall": 0.0148,
+          "lift_vs_base_rate": 1.48
+        },
+        "0.05": {
+          "k": 1598,
+          "precision": 0.2972,
+          "recall": 0.0675,
+          "lift_vs_base_rate": 1.35
+        },
+        "0.1": {
+          "k": 3197,
+          "precision": 0.2781,
+          "recall": 0.1263,
+          "lift_vs_base_rate": 1.26
+        }
+      }
+    },
+    "n_reviewers_cold_start_total": 105997,
+    "n_reviews_cold_start_en_test": 31967,
+    "referencia_speagle_paper_auc": 0.78,
+    "referencia_fusion_sin_net_rur_honesta": {
+      "auc": 0.6231,
+      "ap": 0.1775,
+      "base_rate": 0.1027,
+      "nota": "Cifras del diagn\u00f3stico del maestro (protocolo honesto: net_rur/net_rtr/net_rsr recalculadas usando SOLO labels de train, no del dataset completo) que motiv\u00f3 esta tarea -- no recalculadas por este m\u00f3dulo."
+    }
+  },
+  "speagle_yelpnyc_epsilon_sensitivity": {
+    "nota": "Barrido de epsilon SOLO como diagnostico de sensibilidad -- elegir el mejor epsilon mirando el AUC del held-out de test seria un overfit al propio conjunto de evaluacion (no hay un tercer split de validacion en este modulo). El resultado PRINCIPAL reportado usa epsilon=0.15 (valor tipico de la literatura, elegido a priori, no el que mejor puntua aqui), guardado bajo la clave speagle_yelpnyc.",
+    "resultados": {
+      "0.02": {
+        "converged": true,
+        "n_iter": 55,
+        "auc": 0.7343,
+        "ap": 0.2195,
+        "cold_auc": 0.5401,
+        "cold_ap": 0.2505
+      },
+      "0.03": {
+        "converged": true,
+        "n_iter": 56,
+        "auc": 0.7334,
+        "ap": 0.2188,
+        "cold_auc": 0.5402,
+        "cold_ap": 0.2503
+      },
+      "0.04": {
+        "converged": true,
+        "n_iter": 58,
+        "auc": 0.732,
+        "ap": 0.2179,
+        "cold_auc": 0.5403,
+        "cold_ap": 0.2504
+      },
+      "0.05": {
+        "converged": true,
+        "n_iter": 60,
+        "auc": 0.7302,
+        "ap": 0.2169,
+        "cold_auc": 0.5404,
+        "cold_ap": 0.2504
+      },
+      "0.08": {
+        "converged": true,
+        "n_iter": 65,
+        "auc": 0.7235,
+        "ap": 0.2127,
+        "cold_auc": 0.5409,
+        "cold_ap": 0.2508
+      },
+      "0.1": {
+        "converged": true,
+        "n_iter": 61,
+        "auc": 0.7182,
+        "ap": 0.209,
+        "cold_auc": 0.5411,
+        "cold_ap": 0.2503
+      },
+      "0.15": {
+        "converged": true,
+        "n_iter": 67,
+        "auc": 0.7025,
+        "ap": 0.1982,
+        "cold_auc": 0.5414,
+        "cold_ap": 0.2498
+      },
+      "0.2": {
+        "converged": true,
+        "n_iter": 83,
+        "auc": 0.6834,
+        "ap": 0.1846,
+        "cold_auc": 0.5425,
+        "cold_ap": 0.2495
+      }
+    }
+  }
+}

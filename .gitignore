@@ -12,4 +12,7 @@ outputs/*.log
 outputs/models/t2_deberta/
 outputs/models/t2_deberta_*/
 outputs/models/t2_adversarial_*/
+outputs/behavior_block1_features.csv
+outputs/behavior_graph_signals.csv
+outputs/behavior_text_similarity.csv
 .claude/worktrees/

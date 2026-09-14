@@ -17,3 +17,5 @@ psycopg[binary]
 python-dotenv
 openai
 kaggle
+leidenalg
+python-igraph

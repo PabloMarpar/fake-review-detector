@@ -225,5 +225,341 @@
     "tpr_at_5pct_fpr_openai": 0.075,
     "tpr_at_1pct_fpr_salminen_2022_gpt2": 0.009358752166377816,
     "tpr_at_5pct_fpr_salminen_2022_gpt2": 0.052141619212676404
+  },
+  "graph_fusion_yelpnyc": {
+    "dataset": "Yelp-NYC",
+    "n_train": 251336,
+    "n_held_out": 107716,
+    "base_rate_held_out": 0.1027,
+    "fusion_auc_held_out": 0.9232,
+    "individual_auc_held_out": {
+      "net_rur": 0.9045,
+      "net_rtr": 0.554,
+      "net_rsr": 0.6282,
+      "burst": 0.5325
+    },
+    "best_individual_auc_held_out": 0.9045,
+    "fusion_coefficients_standardized": {
+      "net_rur": 3.6060954653406387,
+      "net_rtr": 0.13654068733511238,
+      "net_rsr": 0.3226166242180244,
+      "burst": 0.053516423822344075
+    },
+    "abstention_band_fused_held_out": {
+      "low_threshold": 0.0165,
+      "high_threshold": 0.1954,
+      "base_rate": 0.1027,
+      "genuina": {
+        "n": 10776,
+        "pct_del_total": 0.1,
+        "fraud_rate_real": 0.0005
+      },
+      "inconcluyente": {
+        "n": 86168,
+        "pct_del_total": 0.8,
+        "fraud_rate_real": 0.0595
+      },
+      "sospechosa": {
+        "n": 10772,
+        "pct_del_total": 0.1,
+        "fraud_rate_real": 0.551
+      }
+    },
+    "speeagle_benchmark_auc_referencia": 0.78,
+    "fusion_sin_net_rur": {
+      "nota": "net_rur excluida a prop\u00f3sito -- se\u00f1al confundida con prolificidad/reincidencia de cuenta, no coordinaci\u00f3n entre cuentas distintas (ver docstring). Este n\u00famero mide mejor 'coordinaci\u00f3n real' que el AUC de la fusi\u00f3n completa de arriba.",
+      "fusion_auc_held_out": 0.631,
+      "fusion_coefficients_standardized": {
+        "net_rtr": 0.13111662970453158,
+        "net_rsr": 0.360061197321475,
+        "burst": 0.08986219943043507
+      }
+    }
+  },
+  "graph_fusion_bretthollenbeck": {
+    "dataset": "bretthollenbeck/Amazon",
+    "n_train": 56196,
+    "n_held_out": 24085,
+    "base_rate_held_out": 0.2758,
+    "fusion_auc_held_out": 0.9992,
+    "individual_auc_held_out": {
+      "net_rur": 0.9978,
+      "net_rtr": 0.6757,
+      "net_rsr": 0.7355,
+      "burst": 0.5387
+    },
+    "best_individual_auc_held_out": 0.9978,
+    "fusion_coefficients_standardized": {
+      "net_rur": 7.961471699577268,
+      "net_rtr": 0.6840867888760592,
+      "net_rsr": 0.6943095897116028,
+      "burst": 0.16518429587928335
+    },
+    "abstention_band_fused_held_out": {
+      "low_threshold": 0.0001,
+      "high_threshold": 1.0,
+      "base_rate": 0.2758,
+      "genuina": {
+        "n": 2409,
+        "pct_del_total": 0.1,
+        "fraud_rate_real": 0.0
+      },
+      "inconcluyente": {
+        "n": 19265,
+        "pct_del_total": 0.7999,
+        "fraud_rate_real": 0.2196
+      },
+      "sospechosa": {
+        "n": 2411,
+        "pct_del_total": 0.1001,
+        "fraud_rate_real": 1.0
+      }
+    },
+    "speeagle_benchmark_auc_referencia": 0.78,
+    "fusion_sin_net_rur": {
+      "nota": "net_rur excluida a prop\u00f3sito -- se\u00f1al confundida con prolificidad/reincidencia de cuenta, no coordinaci\u00f3n entre cuentas distintas (ver docstring). Este n\u00famero mide mejor 'coordinaci\u00f3n real' que el AUC de la fusi\u00f3n completa de arriba.",
+      "fusion_auc_held_out": 0.7611,
+      "fusion_coefficients_standardized": {
+        "net_rtr": 0.41801245650589997,
+        "net_rsr": 0.7230699157207128,
+        "burst": 0.07510729603884042
+      }
+    }
+  },
+  "fraudar_yelpnyc": {
+    "louvain_baseline_auc_held_out_fusion": {
+      "net_rtr": 0.554,
+      "net_rsr": 0.6282
+    },
+    "net_rtr": {
+      "name": "net_rtr",
+      "timings": {
+        "n_nodes": 359052,
+        "nnz_directed": 579422,
+        "peeling_time_s": 12.49
+      },
+      "n_nodes": 359052,
+      "full_graph_density": 0.8069,
+      "max_density": 15.0,
+      "detected_subgraph_size": 31,
+      "auc": 0.5045,
+      "topk": {
+        "0.05": {
+          "k": 17953,
+          "precision": 0.1345,
+          "recall_de_todo_el_fraude": 0.0654,
+          "lift_vs_base_rate": 1.31
+        },
+        "0.1": {
+          "k": 35905,
+          "precision": 0.1197,
+          "recall_de_todo_el_fraude": 0.1165,
+          "lift_vs_base_rate": 1.17
+        },
+        "0.2": {
+          "k": 71810,
+          "precision": 0.1099,
+          "recall_de_todo_el_fraude": 0.2139,
+          "lift_vs_base_rate": 1.07
+        }
+      },
+      "auc_held_out_mismo_split_fusion": 0.5027,
+      "louvain_baseline_auc_held_out_fusion": 0.554
+    },
+    "net_rsr": {
+      "name": "net_rsr",
+      "timings": {
+        "n_nodes": 359052,
+        "metodo": "atajo_analitico_cliques_disjuntos",
+        "peeling_time_s": 0.0
+      },
+      "n_nodes": 359052,
+      "full_graph_density": 203.367,
+      "max_density": 1891.5,
+      "detected_subgraph_size": 3784,
+      "auc": 0.4782,
+      "topk": {
+        "0.05": {
+          "k": 17953,
+          "precision": 0.1103,
+          "recall_de_todo_el_fraude": 0.0537,
+          "lift_vs_base_rate": 1.07
+        },
+        "0.1": {
+          "k": 35905,
+          "precision": 0.1057,
+          "recall_de_todo_el_fraude": 0.1029,
+          "lift_vs_base_rate": 1.03
+        },
+        "0.2": {
+          "k": 71810,
+          "precision": 0.1016,
+          "recall_de_todo_el_fraude": 0.1979,
+          "lift_vs_base_rate": 0.99
+        }
+      },
+      "auc_held_out_mismo_split_fusion": 0.4719,
+      "louvain_baseline_auc_held_out_fusion": 0.6282
+    },
+    "fraudar_mejora_sobre_louvain_en_alguna_relacion": false
+  },
+  "fraudar_bretthollenbeck": {
+    "louvain_baseline_auc_held_out_fusion": {
+      "net_rtr": 0.6757,
+      "net_rsr": 0.7355
+    },
+    "net_rtr": {
+      "name": "net_rtr",
+      "timings": {
+        "n_nodes": 381734,
+        "nnz_directed": 928060,
+        "peeling_time_s": 59.53
+      },
+      "n_nodes": 381734,
+      "full_graph_density": 1.2156,
+      "max_density": 35.5,
+      "detected_subgraph_size": 72,
+      "auc": 0.5717,
+      "topk": {
+        "0.05": {
+          "k": 4014,
+          "precision": 0.3169,
+          "recall_de_todo_el_fraude": 0.0575,
+          "lift_vs_base_rate": 1.15
+        },
+        "0.1": {
+          "k": 8028,
+          "precision": 0.3244,
+          "recall_de_todo_el_fraude": 0.1176,
+          "lift_vs_base_rate": 1.18
+        },
+        "0.2": {
+          "k": 16056,
+          "precision": 0.3505,
+          "recall_de_todo_el_fraude": 0.2542,
+          "lift_vs_base_rate": 1.27
+        }
+      },
+      "auc_held_out_mismo_split_fusion": 0.5734,
+      "louvain_baseline_auc_held_out_fusion": 0.6757
+    },
+    "net_rsr": {
+      "name": "net_rsr",
+      "timings": {
+        "n_nodes": 381734,
+        "metodo": "atajo_analitico_cliques_disjuntos",
+        "peeling_time_s": 0.0
+      },
+      "n_nodes": 381734,
+      "full_graph_density": 61.9685,
+      "max_density": 470.5,
+      "detected_subgraph_size": 942,
+      "auc": 0.5355,
+      "topk": {
+        "0.05": {
+          "k": 4014,
+          "precision": 0.1908,
+          "recall_de_todo_el_fraude": 0.0346,
+          "lift_vs_base_rate": 0.69
+        },
+        "0.1": {
+          "k": 8028,
+          "precision": 0.2439,
+          "recall_de_todo_el_fraude": 0.0884,
+          "lift_vs_base_rate": 0.88
+        },
+        "0.2": {
+          "k": 16056,
+          "precision": 0.2669,
+          "recall_de_todo_el_fraude": 0.1936,
+          "lift_vs_base_rate": 0.97
+        }
+      },
+      "auc_held_out_mismo_split_fusion": 0.5366,
+      "louvain_baseline_auc_held_out_fusion": 0.7355
+    },
+    "fraudar_mejora_sobre_louvain_en_alguna_relacion": false
+  },
+  "leiden_yelpnyc": {
+    "louvain_baseline": {
+      "net_rtr": {
+        "loo_auc_dataset_completo": 0.5526,
+        "auc_held_out_fusion": 0.554
+      },
+      "net_rsr": {
+        "loo_auc_dataset_completo": 0.6296,
+        "auc_held_out_fusion": 0.6282
+      }
+    },
+    "net_rtr": {
+      "timings": {
+        "n_nodes": 359052,
+        "n_edges": 289711,
+        "build_time_s": 0.09,
+        "leiden_time_s": 20.45,
+        "n_communities": 224182
+      },
+      "loo_auc_dataset_completo": 0.5526,
+      "auc_held_out_mismo_split_fusion": 0.554,
+      "topk_dataset_completo": {
+        "0.05": {
+          "k": 17953,
+          "precision": 0.1838,
+          "recall_de_todo_el_fraude": 0.0894,
+          "lift_vs_base_rate": 1.79
+        },
+        "0.1": {
+          "k": 35905,
+          "precision": 0.1608,
+          "recall_de_todo_el_fraude": 0.1565,
+          "lift_vs_base_rate": 1.57
+        },
+        "0.2": {
+          "k": 71810,
+          "precision": 0.1345,
+          "recall_de_todo_el_fraude": 0.2618,
+          "lift_vs_base_rate": 1.31
+        }
+      },
+      "louvain_baseline": {
+        "loo_auc_dataset_completo": 0.5526,
+        "auc_held_out_fusion": 0.554
+      }
+    },
+    "net_rsr": {
+      "timings": {
+        "n_nodes": 359052,
+        "n_edges": 73019336,
+        "build_time_s": 23.54,
+        "leiden_time_s": 43.73,
+        "n_communities": 4452
+      },
+      "loo_auc_dataset_completo": 0.6296,
+      "auc_held_out_mismo_split_fusion": 0.6282,
+      "topk_dataset_completo": {
+        "0.05": {
+          "k": 17953,
+          "precision": 0.2504,
+          "recall_de_todo_el_fraude": 0.1219,
+          "lift_vs_base_rate": 2.44
+        },
+        "0.1": {
+          "k": 35905,
+          "precision": 0.2084,
+          "recall_de_todo_el_fraude": 0.2029,
+          "lift_vs_base_rate": 2.03
+        },
+        "0.2": {
+          "k": 71810,
+          "precision": 0.1798,
+          "recall_de_todo_el_fraude": 0.35,
+          "lift_vs_base_rate": 1.75
+        }
+      },
+      "louvain_baseline": {
+        "loo_auc_dataset_completo": 0.6296,
+        "auc_held_out_fusion": 0.6282
+      }
+    }
   }
 }

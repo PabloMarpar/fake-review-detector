@@ -1,0 +1,327 @@
+{
+  "behavior_block1_timings": {
+    "block1_seconds": 391.16,
+    "n_rows": 359052
+  },
+  "behavior_graph_signals_timings": {
+    "seconds": 92.9
+  },
+  "behavior_similarity_timings": {
+    "threshold": 0.5,
+    "tfidf": {
+      "tfidf_fit_seconds": 415.5,
+      "vocab_size": 386405,
+      "nnz": 236673666
+    },
+    "business_level": {
+      "seconds": 138.4,
+      "n_groups_multi_review": 923,
+      "max_group_size": 7378
+    },
+    "business_week_level": {
+      "seconds": 150.4,
+      "n_groups_multi_review": 78546,
+      "max_group_size": 57
+    },
+    "total_seconds": 704.3
+  },
+  "behavior_features": {
+    "dataset": "Yelp-NYC",
+    "n_total": 359052,
+    "base_rate_total": 0.1027,
+    "n_cold_start_singleton_total": 105997,
+    "base_rate_cold_start_total": 0.2224,
+    "single_feature_auc_ap": {
+      "net_rur": {
+        "auc": 0.9046,
+        "ap": 0.5308
+      },
+      "singleton": {
+        "auc": 0.6916,
+        "ap": 0.1792
+      },
+      "net_rsr": {
+        "auc": 0.6296,
+        "ap": 0.1757
+      },
+      "reviewer_avg_rd": {
+        "auc": 0.5715,
+        "ap": 0.1675
+      },
+      "lexical_richness": {
+        "auc": 0.6058,
+        "ap": 0.1476
+      },
+      "rating_deviation": {
+        "auc": 0.5675,
+        "ap": 0.1394
+      },
+      "reviewer_nr": {
+        "auc": 0.4661,
+        "ap": 0.1357
+      },
+      "reviewer_pr": {
+        "auc": 0.5634,
+        "ap": 0.1343
+      },
+      "exclamation_ratio": {
+        "auc": 0.5133,
+        "ap": 0.1287
+      },
+      "business_singleton_reviewer_ratio": {
+        "auc": 0.5633,
+        "ap": 0.1243
+      },
+      "net_rtr": {
+        "auc": 0.5526,
+        "ap": 0.1218
+      },
+      "rating_extremity": {
+        "auc": 0.5752,
+        "ap": 0.1212
+      },
+      "burst": {
+        "auc": 0.5315,
+        "ap": 0.1191
+      },
+      "business_rating_std": {
+        "auc": 0.5362,
+        "ap": 0.1176
+      },
+      "reviewer_bst": {
+        "auc": 0.5416,
+        "ap": 0.1173
+      },
+      "text_max_sim_business_diff_reviewer": {
+        "auc": 0.4741,
+        "ap": 0.1169
+      },
+      "uppercase_ratio": {
+        "auc": 0.4973,
+        "ap": 0.112
+      },
+      "text_n_above_thresh_business_diff_reviewer": {
+        "auc": 0.5145,
+        "ap": 0.1055
+      },
+      "text_n_above_thresh_business_week_diff_reviewer": {
+        "auc": 0.5022,
+        "ap": 0.1045
+      },
+      "business_n_reviews": {
+        "auc": 0.4982,
+        "ap": 0.1039
+      },
+      "temporal_position": {
+        "auc": 0.4976,
+        "ap": 0.1011
+      },
+      "text_max_sim_business_week_diff_reviewer": {
+        "auc": 0.454,
+        "ap": 0.0952
+      },
+      "reviewer_mnr": {
+        "auc": 0.38,
+        "ap": 0.0914
+      },
+      "reviewer_etg": {
+        "auc": 0.2757,
+        "ap": 0.0894
+      },
+      "reviewer_erd": {
+        "auc": 0.2793,
+        "ap": 0.0845
+      },
+      "reviewer_active_life_days": {
+        "auc": 0.2331,
+        "ap": 0.0826
+      },
+      "reviewer_n_reviews": {
+        "auc": 0.2527,
+        "ap": 0.0795
+      },
+      "text_length_words": {
+        "auc": 0.3639,
+        "ap": 0.0756
+      }
+    },
+    "classifier_behavior_only": {
+      "features": [
+        "rating_deviation",
+        "singleton",
+        "rating_extremity",
+        "temporal_position",
+        "text_length_words",
+        "uppercase_ratio",
+        "exclamation_ratio",
+        "lexical_richness",
+        "reviewer_n_reviews",
+        "reviewer_mnr",
+        "reviewer_pr",
+        "reviewer_nr",
+        "reviewer_avg_rd",
+        "reviewer_bst",
+        "reviewer_erd",
+        "reviewer_etg",
+        "reviewer_active_life_days",
+        "business_n_reviews",
+        "business_rating_std",
+        "business_singleton_reviewer_ratio",
+        "text_max_sim_business_diff_reviewer",
+        "text_n_above_thresh_business_diff_reviewer",
+        "text_max_sim_business_week_diff_reviewer",
+        "text_n_above_thresh_business_week_diff_reviewer"
+      ],
+      "n_train": 251336,
+      "n_test": 107716,
+      "base_rate_test": 0.1027,
+      "auc": 0.8448,
+      "ap": 0.3866,
+      "topk": {
+        "0.01": {
+          "k": 1077,
+          "precision": 0.701,
+          "recall_de_todo_el_fraude": 0.0682,
+          "lift_vs_base_rate": 6.82
+        },
+        "0.05": {
+          "k": 5386,
+          "precision": 0.4731,
+          "recall_de_todo_el_fraude": 0.2303,
+          "lift_vs_base_rate": 4.6
+        },
+        "0.1": {
+          "k": 10772,
+          "precision": 0.386,
+          "recall_de_todo_el_fraude": 0.3757,
+          "lift_vs_base_rate": 3.76
+        }
+      },
+      "feature_importances_gain": {
+        "reviewer_active_life_days": 262867.98,
+        "text_length_words": 32316.18,
+        "reviewer_n_reviews": 21184.38,
+        "temporal_position": 20885.85,
+        "reviewer_avg_rd": 20071.54,
+        "reviewer_etg": 19127.55,
+        "business_n_reviews": 13842.23,
+        "text_max_sim_business_diff_reviewer": 12210.07,
+        "reviewer_pr": 10266.0,
+        "reviewer_erd": 7092.13,
+        "uppercase_ratio": 7033.55,
+        "business_singleton_reviewer_ratio": 6585.59,
+        "reviewer_mnr": 6153.56,
+        "reviewer_nr": 6027.38,
+        "singleton": 4923.46,
+        "rating_deviation": 4817.03,
+        "business_rating_std": 4768.98,
+        "text_max_sim_business_week_diff_reviewer": 3401.49,
+        "lexical_richness": 2896.55,
+        "exclamation_ratio": 2077.96,
+        "rating_extremity": 1998.81,
+        "text_n_above_thresh_business_diff_reviewer": 996.92,
+        "reviewer_bst": 911.57,
+        "text_n_above_thresh_business_week_diff_reviewer": 134.31
+      },
+      "cold_start_singleton_reviewers": {
+        "n": 31967,
+        "base_rate": 0.2202,
+        "auc": 0.6632,
+        "ap": 0.3668
+      }
+    },
+    "classifier_behavior_plus_graph": {
+      "features": [
+        "rating_deviation",
+        "singleton",
+        "rating_extremity",
+        "temporal_position",
+        "text_length_words",
+        "uppercase_ratio",
+        "exclamation_ratio",
+        "lexical_richness",
+        "reviewer_n_reviews",
+        "reviewer_mnr",
+        "reviewer_pr",
+        "reviewer_nr",
+        "reviewer_avg_rd",
+        "reviewer_bst",
+        "reviewer_erd",
+        "reviewer_etg",
+        "reviewer_active_life_days",
+        "business_n_reviews",
+        "business_rating_std",
+        "business_singleton_reviewer_ratio",
+        "text_max_sim_business_diff_reviewer",
+        "text_n_above_thresh_business_diff_reviewer",
+        "text_max_sim_business_week_diff_reviewer",
+        "text_n_above_thresh_business_week_diff_reviewer",
+        "net_rur",
+        "net_rtr",
+        "net_rsr",
+        "burst"
+      ],
+      "n_train": 251336,
+      "n_test": 107716,
+      "base_rate_test": 0.1027,
+      "auc": 0.9547,
+      "ap": 0.7714,
+      "topk": {
+        "0.01": {
+          "k": 1077,
+          "precision": 0.9981,
+          "recall_de_todo_el_fraude": 0.0971,
+          "lift_vs_base_rate": 9.72
+        },
+        "0.05": {
+          "k": 5386,
+          "precision": 0.9085,
+          "recall_de_todo_el_fraude": 0.4422,
+          "lift_vs_base_rate": 8.84
+        },
+        "0.1": {
+          "k": 10772,
+          "precision": 0.6729,
+          "recall_de_todo_el_fraude": 0.655,
+          "lift_vs_base_rate": 6.55
+        }
+      },
+      "feature_importances_gain": {
+        "net_rur": 812403.94,
+        "net_rsr": 59675.07,
+        "business_n_reviews": 19105.37,
+        "temporal_position": 16645.4,
+        "text_length_words": 10947.14,
+        "business_rating_std": 9456.97,
+        "business_singleton_reviewer_ratio": 8530.73,
+        "rating_deviation": 6587.31,
+        "reviewer_avg_rd": 6193.08,
+        "net_rtr": 6095.71,
+        "uppercase_ratio": 4554.53,
+        "text_max_sim_business_diff_reviewer": 3473.47,
+        "burst": 3322.64,
+        "reviewer_n_reviews": 3120.67,
+        "exclamation_ratio": 2193.39,
+        "text_max_sim_business_week_diff_reviewer": 2155.18,
+        "lexical_richness": 1980.22,
+        "reviewer_active_life_days": 1652.49,
+        "reviewer_pr": 1441.38,
+        "reviewer_etg": 1118.25,
+        "reviewer_nr": 961.84,
+        "rating_extremity": 857.76,
+        "reviewer_erd": 660.15,
+        "reviewer_bst": 486.63,
+        "text_n_above_thresh_business_diff_reviewer": 261.15,
+        "reviewer_mnr": 226.93,
+        "text_n_above_thresh_business_week_diff_reviewer": 56.66,
+        "singleton": 28.98
+      },
+      "cold_start_singleton_reviewers": {
+        "n": 31967,
+        "base_rate": 0.2202,
+        "auc": 0.7647,
+        "ap": 0.5183
+      }
+    }
+  }
+}

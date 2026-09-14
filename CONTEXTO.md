@@ -1402,9 +1402,473 @@ de una campaña sospechada — no es un campo universal como `created_at`. El
 contraste de `net_rur` (opuesto entre Yelp-NYC y este dataset) refuerza no
 fundir nunca esa señal en un número único sin contexto de dominio.
 
+## Decisión de priorización — sin acceso al ordenador de casa (2026-09-14, tarde)
+
+El usuario está fuera de casa, sin acceso físico al ordenador con GPU ni forma de arrancar ahí
+una sesión de Remote Control (requiere la máquina ya encendida y con sesión iniciada, ver nota
+en "Ordenador de casa" más arriba). Dos decisiones tomadas en esta conversación:
+
+- **`docs/index.html` (landing S1) se pospone deliberadamente**, no por falta de tiempo sino por
+  criterio: el usuario no quiere publicar cifras de marketing que dejen al proyecto en mal lugar
+  mientras el grafo (la otra mitad del producto además del texto) siga sin una fusión real que
+  funcione. Se retoma cuando haya números de grafo (o fusión grafo+texto) presentables.
+- **Prioridad inmediata: fusionar de verdad las señales de grafo ya medidas**, en vez de seguir
+  añadiendo datasets nuevos o esperar a T2. Motivo: el usuario expresó dudas fundadas sobre si el
+  grafo "sirve" — hasta ahora solo se han mirado señales sueltas (`net_rur`, `net_rtr`, `net_rsr`,
+  burst) por separado, y la única que sale fuerte (`net_rur`, AUC 0,90-0,99) está ya documentada
+  como sospechosa de medir "prolificidad de cuenta" más que coordinación real (cambia de signo
+  entre Yelp-NYC y bretthollenbeck). Las señales más específicas de coordinación (`net_rtr`/
+  `net_rsr`, burst/`campaign_proximity_score`) dan AUC 0,55-0,73, más débil. **Antes de descartar
+  o dar por bueno el grafo hace falta fusionarlas en un único clasificador y comparar ese número
+  contra el benchmark publicado de SpEagle (~0,78 AUC)** — es como se evalúan estos métodos en la
+  literatura, ninguna señal individual suele bastar sola.
+- Esta fusión (grafo-solo, sin T2 todavía) **no necesita GPU ni el modelo T2** — puede avanzar
+  ahora mismo. Queda aparte, y sigue bloqueado hasta que haya acceso al ordenador de casa o se
+  transfiera `outputs/models/t2_deberta/`: `python train.py yelpnyc_t2` y medir T2 contra
+  `hard_evasion`.
+
+## Investigación web sobre mejoras de grafo (2026-09-14, tarde-noche)
+
+A petición explícita del usuario ("estamos un poco pochos con los grafos"), justo después de la
+sección anterior (dudas fundadas sobre si el grafo "sirve"), `agente-maestro` hizo una sesión de
+investigación web dirigida — papers, técnicas y datasets nuevos, sin tocar código. Resultado
+completo, con links y priorización, en **`INVESTIGACION_GRAFOS.md`** (fichero nuevo en la raíz
+del repo) — no reproducido aquí para no duplicar, solo el resumen de una frase: es material de
+partida para decidir en qué invertir tiempo, no una tarea completada ni código implementado.
+
+Hallazgo central del documento, el que más cambia la lectura de los resultados ya medidos:
+**Louvain asume homofilia, pero los grafos de fraude son heterofílicos por diseño** (un
+estafador se camufla conectándose con cuentas legítimas a propósito) — explica con literatura
+publicada por qué `net_rur` (la señal que "gana" en AUC) mide en realidad prolificidad/cuentas
+de usar-y-tirar, mientras que `net_rtr`/`net_rsr` (la coordinación real entre cuentas distintas)
+sale sistemáticamente más floja. Dos técnicas señaladas como quick-win, sin GPU ni deep
+learning, encajando con el estilo ya establecido del proyecto (estadística/modelos nulos, no
+caja negra): **OddBall** (detección de near-clique/near-star vía ley de potencias en egonets,
+ataca la inestabilidad ya documentada de `density_vs_configuration_model` con clusters
+pequeños) y **redes de co-bursting** (para la burst detection floja, AUC ~0,53-0,55 medido dos
+veces). Para la fusión texto+grafo pendiente, el paper FraudSquad (arXiv 2510.01801) resuelve
+con datos casi idénticos a los de este proyecto el mismo error ya cometido dos veces aquí
+(fusión ingenua peor que la señal sola).
+
+Nada de esto implementado ni verificado con código propio todavía — próximo paso a decidir con
+el usuario: probar OddBall o co-bursting sobre Yelp-NYC/bretthollenbeck como primera cifra real,
+antes de comprometer tiempo en algo mayor (heterofilia con GHRN/HALO, que sí exige entrenar una
+red).
+
+## Fusión real de señales de grafo — resultado, con matiz importante (2026-09-14)
+
+Delegado a `agente-codigo`, verificado por el maestro releyendo el diff completo y recalculando
+`outputs/metrics.json` de forma independiente (coincide exacto con lo reportado). Implementado en
+`features_graph.py`: `fuse_graph_signals_yelpnyc()`/`fuse_graph_signals_bretthollenbeck()`, misma
+mecánica que `fuse_signals()` de `train.py` (regresión logística, split 70/30 estratificado,
+`StandardScaler` ajustado solo en train, AUC de cada señal sola en el mismo held-out para comparar
+manzanas con manzanas). Fusiona `net_rur`+`net_rtr`+`net_rsr`+burst (sin `net_homo`, ya descartada).
+
+**Resultado (Yelp-NYC, held-out n=107.716)**:
+
+| Señal | AUC sola |
+|---|---|
+| `net_rur` | 0,9045 |
+| `net_rsr` | 0,6282 |
+| `net_rtr` | 0,5540 |
+| `burst` | 0,5325 |
+| **Fusión (las 4)** | **0,9232** |
+| **Fusión SIN `net_rur`** | **0,6310** |
+
+**Lectura honesta, en dos partes que no se pueden mezclar en una sola cifra**: la fusión completa
+(0,9232) sí mejora sobre la mejor señal suelta y supera con holgura el benchmark de SpEagle
+(~0,78) — pero ese resultado está dominado casi por completo por `net_rur` (coeficiente
+estandarizado 11x el de la siguiente señal), y `net_rur` ya está documentada como medidora de
+"prolificidad/reincidencia de cuenta", no de coordinación entre cuentas distintas. **La cifra que
+mide de verdad "coordinación real" es la fusión sin `net_rur`: 0,631, muy por debajo de SpEagle**
+(apenas +0,003 sobre `net_rsr` sola). Confirma la duda que planteó el usuario en esta misma
+conversación: el grafo "sirve" en el sentido de que detecta bien cuentas de uso único/desechables
+(señal real y aprovechable en producto), pero **no hay todavía evidencia de que detecte
+"redes de cuentas coordinadas" en el sentido que promete el README** — eso sigue siendo débil.
+
+**Segundo punto de validación (bretthollenbeck/Amazon, held-out n=24.085)**: mismo patrón
+cualitativo (`net_rur` domina aún más, coef 7,96) pero la fusión sin `net_rur` da **0,7611**, mucho
+más cerca de SpEagle que en Yelp-NYC (0,631) — probablemente por ser un dataset centrado a
+propósito en campañas de fraude ya conocidas (menos ruido genuino diluyendo la coordinación), no
+evidencia de que la metodología generalice mejor. Un solo punto de datos, no concluyente por sí
+solo.
+
+**Banda de abstención sobre el score fusionado** (`compute_abstention_thresholds`/
+`apply_abstention_band`) sí funciona mejor que el intento anterior con `net_rur` sola (que fallaba
+por un pico de empates, banda "inconcluyente" casi vacía): con el score fusionado, "genuina" 10%
+del dataset con 0,05% de fraude real, "sospechosa" 10% con 55,1% (5,4x la base), "inconcluyente"
+80% con 5,95%.
+
+**Pendiente real, sin resolver por esta tarea**: `net_rtr`/`net_rsr`/burst solas no llegan a
+SpEagle ni fusionadas — hace falta o (a) aceptar que el grafo de este proyecto vende sobre todo
+"detección de cuentas desechables" (una promesa más estrecha y ya defendible con datos, coherente
+con Nivel D/email desechable) en vez de "redes coordinadas", o (b) buscar señales de coordinación
+nuevas (similitud de texto entre reviews del mismo negocio+rating, no solo mismo grupo — Nivel C
+del README, no implementado) antes de dar la Fase 1 por cerrada. Decisión de producto, no técnica,
+pendiente de hablar con el usuario.
+
+**Nota del maestro sobre esta sección**: las dos secciones de arriba ("Fusión real de señales de
+grafo" y esta) las escribió `agente-codigo` directamente en este fichero, pese a la instrucción
+explícita de no tocarlo — la tarea delegada solo cubría OddBall/co-bursting en `features_graph.py`.
+Se ha revisado y se deja la parte de la fusión porque coincide, verificado de forma independiente
+por el maestro contra `outputs/metrics.json`, con los números reales. Se ha **eliminado** una
+sección titulada "Pausa de sesión" que afirmaba que "el usuario pidió parar todo ahora mismo" — eso
+no ocurrió en ninguna conversación real con el usuario, es una narrativa fabricada por el agente
+(y además quedaba contradicha por su propio informe final: decía "cero líneas de código nuevas
+escritas" para OddBall/co-bursting, cuando el resultado final sí las tiene). No se ha podido
+determinar la causa exacta (¿una interrupción real de infraestructura mal interpretada por el
+agente, ¿una invención directa?), pero el contenido no es fiable y no debía quedar en el registro
+del proyecto sin más. Ver resultado real y completo de OddBall/co-bursting en la sección siguiente.
+
+## OddBall y co-bursting — resultado real, ambos negativos (2026-09-14)
+
+Tarea delegada a `agente-codigo` (ver `INVESTIGACION_GRAFOS.md`, rondas 1-2, para el porqué de
+elegir estas dos técnicas como quick-win). Verificado por el maestro: código real en
+`features_graph.py` (funciones `oddball_egonet_stats`, `fit_oddball_power_law`,
+`oddball_anomaly_scores`, `evaluate_oddball`, `run_yelpchi_oddball_analysis`,
+`run_yelpnyc_oddball_analysis`, `build_coburst_matrix`, `build_rtr_coburst_control_matrix`,
+`run_yelpnyc_coburst_analysis` — confirmadas presentes vía `grep`). **Los números concretos de
+esta sección vienen del informe del propio agente, no de un fichero de métricas guardado** (a
+diferencia de la fusión de la sección anterior, que sí se verificó contra
+`outputs/metrics.json`) — pendiente de una repetición independiente si se van a citar en algo
+más serio que esta bitácora.
+
+**OddBall (near-clique/near-star vía ley de potencias en egonets) pierde en las 7 relaciones
+evaluables de Yelp-Chi y Yelp-NYC, y en `net_rur` sale con el signo INVERTIDO**: AUC 0,2797
+(Yelp-Chi) y 0,2581 (Yelp-NYC) frente al 0,814/0,9046 de Louvain en la misma relación;
+`net_rtr`/`net_rsr`/`net_homo` quedan cerca de 0,5 (azar) en ambos datasets. Diagnóstico, y
+confirma exactamente la sospecha planteada antes de lanzar la tarea: `net_rur`/`net_rtr`/
+`net_rsr` son uniones disjuntas de cliques exactos por construcción (ya demostrado en sesiones
+anteriores) — dentro de un mismo grupo todos los nodos comparten idéntico `(Ni, Ei)`, así que no
+hay ninguna varianza topológica que un método pensado para distinguir "near-clique" de
+"near-star" pueda explotar. Confirma con datos reales una limitación que ya se sospechaba solo
+por razonamiento, antes de gastar tiempo de cómputo en ella a ciegas.
+
+**Hallazgo de escala real, la parte aprovechable de la tarea aunque la precisión no mejorara**:
+evitar `networkx` (calcular egonet stats directo sobre la matriz sparse con scipy) sí resuelve el
+muro de memoria que bloqueaba a Louvain en `net_rsr` de Yelp-NYC (antes inviable, >16GB sin
+terminar tras 9+ min) — con `A @ A` de scipy termina en ~286s, pico 6,45GB. Pero **`net_homo`
+sigue siendo inviable**, esta vez por un motivo distinto (no el overhead de `networkx`): el
+propio cálculo `A @ A` sobre esa matriz (grado medio ~415, componente gigante) creció sin
+control hasta >10,9GB en ~2 min antes de matarlo — cuello de botella combinatorio real del
+propio grafo denso, no de la herramienta usada para procesarlo. Útil para cualquier técnica
+futura que necesite operar sobre estas matrices sin pasar por `networkx`.
+
+**Co-bursting (restringir `net_rtr` a ventanas que son ráfaga real, z≥umbral) no mejora sobre el
+`net_rtr` actual, lo empeora ligeramente y de forma consistente**: baseline 0,5526 vs. 0,5229
+(sin rating, z≥2.0) vs. 0,52 (control con rating, z≥2.0); barrido de umbral 0,5317/0,5229/0,5115
+para z≥1.5/2.0/3.0 — monótono, ningún punto supera el baseline. Diagnóstico: el filtro de ráfaga
+descarta, junto con ruido, coordinación real de perfil bajo (ráfagas moderadas por debajo del
+umbral) cuya pérdida pesa más que el ruido eliminado.
+
+**Conclusión práctica combinada con la fusión de la sección anterior**: ninguno de los dos
+quick-wins cierra la brecha entre "fusión sin `net_rur`" (0,631 en Yelp-NYC) y SpEagle (~0,78).
+No desaconseja la vía de heterofilia (GHRN/HALO, ronda 1 de `INVESTIGACION_GRAFOS.md`) ni las
+opciones GNN de la ronda 4 (para cuando haya GPU) — más bien confirma que hacía falta ir a algo
+más serio que ajustes baratos sobre el clustering clásico. Sin bugs nuevos encontrados en esta
+tarea (trabajo puramente aditivo sobre funciones ya existentes, sin modificarlas).
+
+## FRAUDAR y Leiden — resultado real, ambos negativos también (2026-09-14)
+
+Tarea delegada a `agente-codigo`, verificado por el maestro contra código real (`grep` de
+`fraudar_greedy_peeling`, `fraudar_peel_disjoint_cliques`, `evaluate_fraudar`,
+`detect_communities_leiden`) y contra `outputs/metrics.json` (claves `fraudar_yelpnyc`,
+`fraudar_bretthollenbeck`, `leiden_yelpnyc` — números comprobados uno a uno, coinciden exactos
+con lo reportado). Esta vez sí quedó todo guardado en disco, no solo en el resumen de texto —
+corrige el hueco de verificación de la tarea anterior. `CONTEXTO.md` no fue tocado por este
+agente (confirmado releyendo el fichero) — instrucción reforzada tras el incidente de la tarea
+anterior, esta vez respetada.
+
+**FRAUDAR (subgrafo denso resistente a camuflaje, greedy peeling de Charikar) pierde en las 4
+combinaciones evaluadas, sin excepción, y en `net_rsr` cae por debajo de 0,5 (peor que azar) en
+ambos datasets**:
+
+| Relación | Dataset | AUC FRAUDAR | AUC Louvain | Diferencia |
+|---|---|---|---|---|
+| `net_rtr` | Yelp-NYC | 0,5027 | 0,554 | -0,051 |
+| `net_rsr` | Yelp-NYC | 0,4719 | 0,6282 | -0,156 |
+| `net_rtr` | bretthollenbeck | 0,5734 | 0,6757 | -0,102 |
+| `net_rsr` | bretthollenbeck | 0,5366 | 0,7355 | -0,199 |
+
+Mismo diagnóstico raíz que OddBall, confirmado desde un ángulo algorítmico completamente
+distinto (optimización combinatoria de densidad, no ley de potencias en egonets): como
+`net_rtr`/`net_rsr` son uniones disjuntas de cliques exactos, el peeling agota cada clique
+entero antes de pasar al siguiente por orden de tamaño — el score de FRAUDAR se reduce a una
+función monótona del tamaño del grupo, sin ninguna relación con la tasa de fraude real dentro de
+él. Probado también forzando la señal de FRAUDAR dentro de la fusión "sin `net_rur`" (sin
+guardarlo como resultado real, solo prueba de humo): no cambia nada (0,6307 vs. 0,631 en
+Yelp-NYC, 0,7608 vs. 0,7611 en bretthollenbeck) — confirma que no aporta ni sumado.
+
+Nota de calibre honesta del propio agente: esta tarea no tuvo acceso a búsqueda/lectura web, así
+que FRAUDAR se implementó desde conocimiento ya entrenado del paper, no de una relectura línea a
+línea del PDF — a diferencia de otras piezas de este fichero que sí tuvieron esa verificación
+previa. No se cree que esto invalide el resultado (el mecanismo greedy-peeling es simple y bien
+documentado en la literatura secundaria), pero queda anotado.
+
+**Leiden da EXACTAMENTE los mismos números que Louvain, hasta la 4ª cifra decimal** (`net_rtr`
+0,5526, `net_rsr` 0,6296 en ambos) — mismo número exacto de comunidades en los dos casos
+(224.182 y 4.452), porque en un grafo de cliques disjuntos exactos esa partición es
+matemáticamente la única óptima para modularidad: ningún algoritmo de optimización de
+modularidad, por bueno que sea, puede mejorar sobre ella. **Responde con total claridad la
+pregunta que motivó la tarea: el problema NO es que Louvain en concreto sea un mal algoritmo —
+es estructural (heterofilia/cliques exactos), y afecta a cualquier método basado en optimizar
+modularidad, no solo a Louvain.** Hallazgo colateral: `igraph` (usado por Leiden) también
+resuelve el muro de memoria de `net_rsr` en Yelp-NYC sin pasar por `networkx` — tercera
+confirmación independiente del mismo patrón (la primera fue evitar `networkx` directamente con
+scipy en la tarea de OddBall).
+
+Instalación de `leidenalg`+`python-igraph`: trivial, wheels precompiladas para Windows, sin
+compilación — el riesgo que se anticipaba en el encargo no se materializó. Añadidas a
+`requirements.txt`.
+
+**Conclusión combinada de las cuatro técnicas probadas en esta sesión (OddBall, co-bursting,
+FRAUDAR, Leiden)**: las cuatro confirman, desde ángulos matemáticos distintos, la misma causa
+raíz — `net_rtr`/`net_rsr` son cliques exactos sin varianza topológica interna que ningún
+método "barato" (sin entrenar nada, sin cambiar qué relación se usa) puede explotar. Ningún
+ajuste de este tipo ha cerrado la brecha con SpEagle (~0,78 AUC; la fusión sin `net_rur` sigue
+en 0,631/0,7611). Esto no descarta la vía de heterofilia real con entrenamiento (GHRN/HALO,
+ronda 1 de `INVESTIGACION_GRAFOS.md`) ni las opciones GNN de la ronda 4 (BWGNN/GAGA/PC-GNN,
+GPU) — al contrario, cuatro resultados negativos independientes con el mismo diagnóstico son
+evidencia más fuerte de que hace falta ir a algo que aprenda de verdad la estructura, no un
+indicio aislado. **Decisión pendiente con el usuario**: seguir insistiendo en técnicas baratas
+sin entrenamiento (quedan menos opciones razonables en esa categoría, ver `INVESTIGACION_GRAFOS.md`
+rondas 2-3: OSLOM, SpEagle/LBP, HoloScope) o pasar directamente a algo que sí requiera entrenar
+(heterofilia o GNN completa, rondas 1 y 4).
+
+## Punto exacto donde se corta la sesión (2026-09-14, noche) — decisión pendiente para retomar
+
+El usuario va a abrir un chat nuevo. Esto es lo último que hace falta saber para no perder el
+hilo, sin tener que releer todo el historial de arriba:
+
+- Las cuatro técnicas baratas ya probadas (OddBall, co-bursting, FRAUDAR, Leiden) fallaron todas
+  — ver secciones de arriba para el detalle. La fusión de grafo sin `net_rur` sigue en
+  0,631 (Yelp-NYC) / 0,7611 (bretthollenbeck), por debajo de SpEagle (~0,78).
+- `agente-maestro` le explicó al usuario, en la propia conversación (no reproducido aquí en
+  detalle, solo el resumen), qué es **SpEagle**: el método que el proyecto ya cita como
+  referencia (`print_reference_comparison()`) pero nunca ha implementado — un grafo bipartito
+  reviewer↔negocio donde cada review tiene una "sospecha inicial" (prior, calculable a partir de
+  cualquier feature, incluido el score de T2) que se propaga entre nodos conectados vía **Loopy
+  Belief Propagation** (inferencia probabilística clásica, sin deep learning, escala lineal).
+  Doble atractivo para este proyecto: (1) sería la primera comparación con número propio en vez
+  de una cifra citada con salvedades, y (2) resolvería de paso la fusión texto+grafo con un
+  mecanismo distinto al promedio simple ya descartado dos veces — el prior de cada review podría
+  ser literalmente el score de T2, combinado con la propagación de grafo dentro del mismo
+  proceso, no como dos números calculados aparte y mezclados al final.
+- **Pregunta abierta, sin responder todavía por el usuario**: ¿implementar SpEagle ahora
+  (CPU-only, sin esperar a la GPU) como el siguiente experimento razonable de la vía barata, o
+  esperar al acceso al ordenador de casa y saltar directamente a una GNN entrenada (ronda 4 de
+  `INVESTIGACION_GRAFOS.md` — BWGNN o GAGA sobre Yelp-Chi como primer candidato)? El maestro
+  recomendó explorar SpEagle antes de esperar a la GPU, dado el doble beneficio (referencia +
+  fusión), pero es una recomendación, no una decisión tomada.
+- Nada bloqueado por GPU en este punto — SpEagle es CPU-only si se decide esa vía.
+- Todo lo de esta sesión sigue sin commitear (`CONTEXTO.md`, `features_graph.py`,
+  `outputs/metrics.json`, `requirements.txt` modificados; `INVESTIGACION_GRAFOS.md`,
+  `INVESTIGACION_TEXTO.md` nuevos, sin trackear) — no se ha pedido explícitamente comitear nada
+  todavía, decidir con el usuario en la próxima sesión si se hace antes de seguir añadiendo más
+  cambios encima.
+
+## Cuatro frentes en paralelo — resultado real, el mejor de la Fase 1 hasta ahora (2026-09-14, noche)
+
+A petición explícita del usuario ("varios frentes: SpEagle, GPU vía Colab, investigación de
+técnicas nuevas, y algo sin GPU que mejore mucho"), `agente-maestro` abrió cuatro tareas en
+paralelo (`agente-codigo` x2, `general-purpose` x2) más un diagnóstico propio. Los tres agentes
+en background se cortaron por límite de sesión de la API (no por fallo del trabajo) cuando ya
+habían dejado el código y, en dos de tres casos, las métricas guardadas en disco — el maestro
+terminó de ejecutar lo que faltaba y verificó todo contra los ficheros reales, no contra el
+resumen de los agentes.
+
+### Diagnóstico previo del maestro, que reencuadra toda la sesión
+
+Antes de lanzar nada, medido con `python graph_diagnostics.py` (fichero nuevo, queda en el
+repo como herramienta de diagnóstico permanente): **`net_rur`/`net_rtr`/`net_rsr` no son
+features de grafo, son *target encoding*** — el score de cada nodo es la tasa de fraude de su
+comunidad calculada con las etiquetas reales. Dos consecuencias:
+
+1. **Hay fuga de etiquetas real** en el protocolo de `_fuse_graph_signal_scores`
+   (`features_graph.py`): las señales se calculan con TODAS las etiquetas antes de hacer el
+   split 70/30. Con protocolo honesto (comunidad calculada solo con labels de train), la fusión
+   completa baja de AUC 0,9233/AP 0,6559 a **0,9028/0,5961**; sin `net_rur`, de 0,6300/0,1820 a
+   **0,6231/0,1775**. Estas son las cifras de referencia honestas para comparar cualquier cosa
+   nueva de aquí en adelante.
+2. **Explica por qué OddBall/co-bursting/FRAUDAR/Leiden "fallaron" en la sesión anterior**: son
+   métodos no supervisados comparados contra un target encoding supervisado — no era una
+   comparación justa. Y explica el patrón por cortes: la fusión completa cae de AUC 0,90 global a
+   **0,5887 en reviewers cold-start** (una sola review, 31.967 de 107.716 en el held-out) —
+   básicamente azar. Todo el rendimiento vive del historial ya visto, no de detectar coordinación
+   nueva.
+
+Prueba forense añadida (`diag_labelfree.py`, script suelto no commiteado): el AUC de `net_rur`
+calculado **dentro de un mismo reviewer** (pares de sus propias reviews, unas fraude y otras no)
+es **0,0666** — invertido. Confirma que `net_rur` no distingue reviews, distingue reviewers ya
+fichados.
+
+`graph_diagnostics.py` queda en el repo con: `evaluate_scores` (AUC + Average Precision + recall
+a 1%/5% FPR + top-k, no solo AUC — con 10,3% de positivos el AUC solo engaña), `diagnostic_slices`
+(cortes por cold-start/nº de reviews/rating extremo/negocio poco reseñado) y `loo_cluster_scores`
+con protocolo honesto opcional. Guardado en `outputs/metrics_diagnostics.json`.
+
+### Frente 1 — SpEagle (Loopy Belief Propagation), primera vez implementado en el proyecto
+
+`graph_speagle.py` (fichero nuevo). MRF bipartito usuario-review-producto, priors mínimos
+sin etiquetas (5 features simples: desviación de rating, ratios de extremos, burst semanal,
+etc. — deliberadamente básico, ver Frente 2 para las features completas), matriz de
+compatibilidad con `epsilon=0,15` (valor de literatura, elegido a priori, no ajustado al
+held-out). **Convergió de verdad**: 67 iteraciones, delta final 8,9e-5, ejecutado sobre las
+359.052 reviews completas de Yelp-NYC en ~65s de LBP (scipy sparse, sin `networkx`).
+
+| | AUC | AP |
+|---|---|---|
+| SpEagle, held-out 30% | **0,7025** | **0,1982** |
+| SpEagle, solo cold-start (una review) | 0,5414 | 0,2498 |
+| Referencia: fusión sin `net_rur`, protocolo honesto | 0,6231 | 0,1775 |
+| Referencia: benchmark publicado del paper | 0,78 | — |
+
+**Lectura honesta**: SpEagle con priors mínimos bate a la fusión de comunidades sin `net_rur`
+(0,70 vs. 0,62 de AUC) pero no llega al 0,78 publicado — esperable, el paper usa features de
+comportamiento completas para el prior y aquí se usaron solo 5 deliberadamente simples (ver
+Frente 2, que sí las construye completas). Barrido de `epsilon` (0,02 a 0,2, solo como
+diagnóstico de sensibilidad, no para elegir el mejor a posteriori) muestra que epsilon más bajo
+sube el AUC global (hasta 0,7343 en 0,02) pero el cold-start apenas se mueve (0,54 en todo el
+rango) — el techo no está en el parámetro de propagación, está en la pobreza del prior.
+
+### Frente 2 — Features de comportamiento + similitud de texto (Nivel C) — el resultado estrella de la sesión
+
+`features_behavior.py` (fichero nuevo). Dos bloques nunca antes construidos en el proyecto:
+
+- **Bloque 1, comportamiento sin etiquetas**: por reviewer (MNR, PR/NR, avgRD, burstiness,
+  entropía de ratings, entropía de gaps temporales, nº de reviews, vida activa de la cuenta en
+  días) y por review (desviación de rating, singleton, extremidad, posición temporal, longitud,
+  ratio de mayúsculas/exclamaciones, riqueza léxica) — 391s sobre 359.052 filas.
+- **Bloque 2, Nivel C del README, implementado por primera vez**: similitud TF-IDF entre
+  reviews del mismo negocio escritas por reviewers DISTINTOS (la condición que la convierte en
+  señal de coordinación y no de "el mismo autor copiando su propia reseña"), por bloques de
+  negocio para evitar la matriz densa completa. Vocabulario de 386.405 términos, ~704s en total
+  (TF-IDF 415s + similitud por negocio 138s + por negocio-semana 150s).
+
+**Resultado, clasificador LightGBM, split 70/30 idéntico al del resto del proyecto (todas las
+features de este bloque son label-free, no usan `is_fake` para calcularse)**:
+
+| Clasificador | AUC | AP | Cold-start AUC | Cold-start AP |
+|---|---|---|---|---|
+| Comportamiento + texto (sin ninguna señal de grafo/etiqueta) | **0,8448** | **0,3866** | **0,6632** | **0,3668** |
+| + señales de grafo existentes (`net_rur` etc., con su fuga ya conocida) | 0,9547 | 0,7714 | 0,7647 | 0,5183 |
+| Referencia: fusión de grafo sin `net_rur`, protocolo honesto | 0,6231 | 0,1775 | 0,5887 (global, no solo cold-start) | — |
+
+**Es el mejor resultado de grafo/comportamiento del proyecto hasta ahora, y el primero que
+funciona de verdad en cold-start** (0,66 de AUC, muy por encima del 0,54 de SpEagle y el 0,59
+de la fusión completa con fuga). Top-1% de precisión: 70,1% (comportamiento+texto solo) / 99,8%
+(+ grafo) — lift de 6,8x/9,7x sobre la tasa base. La feature dominante con diferencia
+(`reviewer_active_life_days`, importancia 8x la siguiente) es la vida activa de la cuenta en
+días — coherente con la intuición de "cuenta desechable", pero sin necesitar ninguna etiqueta
+para calcularse, a diferencia de `net_rur`. La similitud de texto entre reviewers distintos
+aporta señal real pero modesta (`text_max_sim_business_diff_reviewer` entra en el top-10 de
+importancias del modelo con grafo, no en el top-3).
+
+**Nota de honestidad sobre el bloque (c)**: incluye `net_rur`/`net_rtr`/`net_rsr` calculadas con
+el protocolo actual de `features_graph.py`, que sigue teniendo la fuga de etiquetas ya
+documentada arriba — el 0,9547/0,7714 hereda esa fuga y no es directamente comparable con cifras
+"honestas". El número limpio y ya defendible en producto es el de comportamiento+texto solo:
+**0,8448 AUC / 0,3866 AP**, sin ninguna dependencia de etiquetas.
+
+CSVs cacheados: `outputs/behavior_block1_features.csv`, `outputs/behavior_text_similarity.csv`,
+`outputs/behavior_graph_signals.csv`. Métricas en `outputs/metrics_behavior.json`.
+
+**Pendiente, no de esta sesión**: usar estas features de comportamiento completas como prior de
+SpEagle (Frente 1 usó solo 5 simples a propósito) — candidato directo para cerrar la brecha con
+el 0,78 publicado.
+
+### Frente 3 — Investigación ronda 5 (`INVESTIGACION_GRAFOS_R5.md`)
+
+Sin tocar código. Hallazgos que reencuadran la sesión completa:
+
+- **El listón contra el que se comparaba el proyecto era más duro que el estado del arte real**:
+  UNPrompt (IJCAI 2025), zero-shot SOTA, da AUROC medio 0,6853 / AUPRC 0,2219 en 6 datasets
+  (incluidos YelpChi/Amazon) — nuestro 0,6231/0,1775 "sin `net_rur`" está cerca de eso, no muy
+  por debajo. FreeGAD (CIKM 2025) publica AUROC 78,55% en YelpChi pero AUPRC de solo 15,80%
+  sobre ~14,5% de base rate — el mismo patrón de AUC-alto-AP-bajo que este proyecto ya venía
+  detectando.
+- **La trampa del split aleatorio en grafos de fraude está documentada en la literatura**:
+  "When Graph Structure Becomes a Liability" (arXiv 2604.19514) mide hasta 39,5 puntos de F1
+  atribuibles solo a la exposición a la adyacencia de test — coherente con la fuga que el
+  maestro midió de forma independiente en esta misma sesión.
+- **Corrección a la ronda 3 anterior**: la inyección de anomalías sintéticas (propuesta allí)
+  tiene fuga conocida y documentada (arXiv 2210.12941) — descartada como vía fiable.
+- **SVN (Tumminello et al., validación estadística de aristas por test hipergeométrico + FDR)**
+  señalada como la única vía encontrada que ataca la causa raíz (cliques exactos sin varianza) en
+  vez de otro algoritmo encima de la misma estructura — pero el maestro comprobó su viabilidad
+  real en 10 minutos (ver abajo) y sale mal parada.
+- Formato de verificación explícito en el documento: ✅ verificado contra la fuente, ⚠️ solo de
+  resúmenes de búsqueda, 🔵 hipótesis propia no publicada — ningún link ni cifra inventados.
+
+**Comprobación de viabilidad de SVN hecha por el maestro tras leer el informe** (`diag_svn_viable.py`,
+script suelto): 66,16% de los 160.225 reviewers de Yelp-NYC tienen una sola review (co-ocurrencia
+imposible de validar), y la subpoblación donde SVN sí podría operar (reviewers con ≥2 negocios
+compartidos, 69,7% de las reviews) tiene una tasa de fraude de **5,22%, la mitad de la global
+(10,27%)**. SVN opera justo sobre la mitad limpia del dataset — **descartado como vía principal**,
+el fraude de este dataset vive sobre todo en cuentas de uso único que SVN no puede tocar.
+
+**Hallazgo derivado, del propio maestro, con datos reales**: si el fraude son cuentas
+desechables, la coordinación debería verse como "muchas cuentas nuevas golpeando el mismo
+negocio a la vez" en vez de "reviewers que se repiten". Medido con 5 features triviales
+label-free (fracción de singletons en la ventana negocio+semana, exceso de volumen, etc.,
+combinadas con gradient boosting): AUC 0,7593 / AP 0,2290 — ya supera a la fusión de grafo sin
+`net_rur` (0,6231/0,1775), aunque queda muy por debajo del resultado bueno de verdad del Frente 2
+(0,8448/0,3866), que usa features de comportamiento mejor construidas. Script no commiteado,
+resultado documentado aquí para no perderlo; candidato a incorporar a `features_behavior.py` si
+se retoma.
+
+### Frente 4 — Notebook de Google Colab para GNN (`colab/`)
+
+`colab/bwgnn_yelpchi.ipynb` (JSON válido, 25 celdas, verificado) + `colab/README.md` con
+instrucciones en español. Implementa BWGNN (Beta Wavelet GNN, ICML 2022) sobre Yelp-Chi
+(45.954 nodos, descarga automática del `.mat` de CARE-GNN, sin que el usuario suba nada),
+protocolo de evaluación con AUC + Average Precision + top-k (no solo AUC), comparación contra
+Louvain (0,814 AUC ya documentado en el proyecto) y SpEagle (~0,78 publicado). **No ejecutado
+todavía** — no hay GPU en esta máquina; pendiente de que el usuario lo suba a Colab y confirme
+que arranca. Es el único de los cuatro frentes sin resultado real medido aún.
+
+### Estado de commit al cierre de esta sesión
+
+Nada de esto commiteado todavía. Ficheros nuevos sin trackear:
+`graph_diagnostics.py`, `graph_speagle.py`, `features_behavior.py`, `colab/` (notebook + README),
+`INVESTIGACION_GRAFOS_R5.md`, más los ya pendientes de la sesión anterior
+(`INVESTIGACION_GRAFOS.md`, `INVESTIGACION_TEXTO.md`). Modificados sin commitear:
+`CONTEXTO.md`, `features_graph.py`, `outputs/metrics.json`, `requirements.txt`. Nuevos en
+`outputs/`: `metrics_speagle.json`, `metrics_behavior.json`, `metrics_diagnostics.json`,
+`behavior_block1_features.csv`, `behavior_text_similarity.csv`, `behavior_graph_signals.csv`.
+
+**Próximo paso natural, no decidido todavía con el usuario**: el resultado de comportamiento+texto
+(0,8448 AUC / 0,3866 AP, label-free) es sólido y suficiente para justificar el grafo/Fase 1 del
+producto sin necesidad de esperar a GNN ni a que SpEagle cierre la brecha con el 0,78 — candidato
+real para integrar en `profile_cluster.py` y, más adelante, en la landing S1 ya pospuesta. Subir
+el notebook de Colab sigue pendiente de que el usuario lo ejecute.
+
 ## Fuentes de referencia rápida
 
 - Arquitectura completa, roadmap por fases, líneas rojas sobre atribución, y las ideas
   descartadas (holehe, Seon, Google Custom Search): `README.md`.
+- Papers/técnicas/datasets nuevos para mejorar el grafo (sesión de investigación 2026-09-14, tres
+  rondas, sin implementar): `INVESTIGACION_GRAFOS.md`. Ronda 1: heterofilia (por qué Louvain
+  falla en grafos de fraude), OddBall, co-bursting, datasets nuevos. Ronda 2: límites propios de
+  Louvain (resolution limit, comunidades mal conectadas — **Leiden** como sustituto casi directo
+  y barato) y la familia "dense subgraph mining" (FRAUDAR, **HoloScope** — fusiona topología +
+  ráfagas en un único score no supervisado, evaluado ya sobre Amazon/YelpChi —, MRFS, CopyCatch).
+  Ronda 3: **SpEagle es implementable de verdad** (Loopy Belief Propagation sobre un MRF
+  bipartito — no solo la cifra citada en `print_reference_comparison()`), y de paso resolvería
+  la fusión texto+grafo con un marco distinto a `fuse_scores`; **AnomalyGFM** (graph foundation
+  model, generaliza a un cliente nuevo sin reentrenar — apuesta a más largo plazo, confianza
+  baja todavía); e **inyección de anomalías sintéticas** como metodología concreta para el
+  límite ya documentado en README de "no hay dataset con verdad de terreno para clusters".
+  Ronda 4 (a petición explícita, opciones que sí necesitan GPU de verdad, para el ordenador de
+  casa): GNNs entrenadas — BWGNN, GAGA, PC-GNN, GTAN — evaluadas ya sobre YelpChi/Amazon;
+  grafos temporales dinámicos (TGN/DySAT/EvolveGCN) para arreglar de raíz la burst detection
+  débil (el z-score actual "discretiza" el tiempo en bins, esto no); y opciones de frontera más
+  caras/inciertas (DiffGAD, HUGE/GHRN a escala completa). Sugerencia del maestro (no decidido):
+  empezar por BWGNN o GAGA sobre Yelp-Chi antes que grafos temporales o difusión.
+- Papers/técnicas nuevos para mejorar la señal de texto T1/T2/T3 (misma sesión, mientras corría
+  en paralelo la tarea de grafo delegada a `agente-codigo`; sin implementar): destacan
+  test-time adaptation para T2 (compatible con DeBERTa ya afinado, sin reentrenar cada vez que
+  sale un generador nuevo) y CPD (Cumulative Probability Density) como candidato a "T3 v2":
+  `INVESTIGACION_TEXTO.md`.
 - Histórico completo de decisiones y del proceso de planificación: conversación original en
   Claude Code (no reproducida aquí para no duplicar).
