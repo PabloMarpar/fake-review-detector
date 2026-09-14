@@ -1,6 +1,7 @@
 pandas
 numpy
 scipy
+networkx
 scikit-learn
 lightgbm
 spacy
@@ -15,3 +16,4 @@ sqlalchemy
 psycopg[binary]
 python-dotenv
 openai
+kaggle

@@ -881,6 +881,142 @@ completado y verificado por el maestro ejecutándolo de nuevo:
 comparación con salvedades frente a SpEagle/CARE-GNN) — pendiente de resultado y de decidir si
 se aplica también sobre Amazon una vez validado el enfoque en Yelp-Chi.
 
+## Tercer dataset de grafo — Yelp-NYC, con texto (2026-09-14)
+
+Yelp-Chi y Amazon dan grafo pero no texto (Nivel A del perfilado, no fusión con T2). El usuario
+pidió explícitamente una fuente que tenga **las dos cosas a la vez** — reviewer/negocio para
+construir el grafo Y el texto de la review — que es justo lo que ya apuntaba el plan original
+de Fase 1 con Yelp-NYC/ZIP (Rayana & Akoglu, KDD 2015), pendiente desde que se optó por
+Yelp-Chi como atajo sin texto.
+
+- **La fuente oficial sigue sin descarga automatizable**: `https://odds.cs.stonybrook.edu/
+  yelpnyc-dataset/` exige pedir el dataset con ground-truth por email a la autora — el usuario
+  ya escribió ese email (2026-09-13), sin respuesta todavía.
+- **Decisión mientras se espera esa respuesta**: usar un mirror de Kaggle
+  (`ahtxham/yelp-nyc-labelled-dataset`), con el visto bueno explícito del usuario. Es la
+  **única fuente de `data.py` que rompe el patrón "sin cuenta"** que se seguía hasta ahora
+  (Ott/Salminen/Yelp-Chi/Amazon son descarga directa) — decisión consciente, no un descuido.
+- **`KAGGLE_USERNAME`/`KAGGLE_KEY` añadidas a `.env`** (nunca a un fichero versionado). Se
+  probó con `kaggle.api.dataset_list_files`/`dataset_download_files` reales antes de dar por
+  buenas las credenciales, no solo `authenticate()` (que no falla aunque el token sea inválido).
+- **`data.py` tiene ahora `load_yelpnyc_dataset()`** — devuelve un DataFrame plano (no un dict
+  de matrices sparse como Yelp-Chi/Amazon, porque aquí no viene un grafo pre-proyectado: hay
+  que construirlo en `features_graph.py` a partir de los pares reviewer-negocio) con
+  `reviewer_id`, `business_id`, `rating`, `is_fake`, `date`, `text`, `source_dataset`.
+- **Hallazgo real de esta sesión, verificado con un join completo, no solo por inspección**:
+  el mirror de Kaggle trae las cabeceras de columna mal etiquetadas. `Yelp NYC Metadata.csv`
+  dice `Product_id, Product_id2, Rating, Label, Date`, pero `Product_id` tiene 160.225 valores
+  únicos y `Product_id2` solo 923 — al revés de lo que dicen los nombres (923 negocios /
+  160.225 reviewers es la cifra publicada). Mismo problema en `yelp.csv`
+  (`Review_id, Product_id, Date, Review`: `Review_id` es en realidad el reviewer, no la review).
+  Se confirmó cruzando ambos ficheros por (reviewer_id, business_id, date) con la hipótesis de
+  mapeo corregida: los 359.052 registros de metadata encajan 1:1 con los 359.052 de `yelp.csv`,
+  sin huérfanos — si el mapeo estuviera mal, no habría dado 100% de coincidencia.
+- **Cifras finales, coinciden con lo publicado por Rayana & Akoglu** (a diferencia de Yelp-Chi,
+  cuyo `.mat` de CARE-GNN no cuadraba con el paper): 923 negocios, 160.225 reviewers, 359.052
+  reviews, 10,3% `filtered` (proxy de fake) — tasa coherente con la literatura sobre Yelp-NYC.
+  Texto sin nulos tras el cruce; 896 duplicados exactos de texto (0,25%), dejados sin quitar a
+  propósito porque eliminarlos borraría aristas reviewer-negocio reales del grafo.
+- **Decisión tomada por el usuario el mismo día**: Yelp-NYC pasa a ser la fuente principal de
+  grafo del proyecto de aquí en adelante (más volumen que Yelp-Chi/Amazon). Amazon queda como
+  posible enriquecimiento futuro — no como fusión de grafo (espacio de nodos disjunto, otra
+  plataforma), sino como segundo dataset de validación de la misma metodología si hace falta
+  más adelante, igual que ya sirvió Yelp-Chi. Si llega la respuesta del email oficial a Rayana,
+  revisar si conviene migrar del mirror de Kaggle a esa fuente.
+
+## Grafo + burst + perfilado sobre Yelp-NYC, delegado a `agente-codigo` (2026-09-14)
+
+Con Yelp-NYC cargado, se completó el resto del roadmap de Fase 1 que ya prometía el README
+("Yelp-Chi → NYC → ZIP, Louvain, fusión con banda de abstención [...] Perfilado de clusters").
+Verificado por el maestro (sintaxis + import reales de los tres ficheros, lectura del diff
+completo), no solo aceptado por el resumen del especialista.
+
+- **`features_graph.py` (nueva sección Yelp-NYC, el bloque de Yelp-Chi queda intacto)**:
+  `build_yelpnyc_graphs(df)` construye `net_rur`/`net_rtr`/`net_rsr`/`net_homo` a partir del
+  DataFrame plano (Yelp-Chi/Amazon los traían ya pre-proyectados, aquí no). **Truco real de
+  construcción**: como cada relación es "mismo valor de una clave" (mismo reviewer, o mismo
+  negocio+rating[+ventana]), el grafo es por construcción una unión disjunta de cliques —
+  se construye con una multiplicación de matrices dispersas (`incidencia @ incidencia.T`) en
+  vez de un bucle por pares, y las tres relaciones tardan **9,3s en total** (359.052 nodos, 8x
+  Yelp-Chi).
+  - **Ventana de `net_rtr` medida, no elegida a ciegas**: semana (224.182 grupos, 289.711
+    aristas) vs. mes (115.900 grupos, 1.216.228 aristas, 4,2x más) — LOO-AUC casi idéntico
+    (0,5526 vs. 0,57), así que se queda semana (más barato, más específico de coordinación real).
+  - **Hallazgo real de escala, no forzado**: `net_rsr` (mismo negocio+rating, sin ventana) tiene
+    ~73M aristas no dirigidas — convertirlo a grafo de `networkx` para Louvain **es inviable en
+    esta máquina** (>16GB RAM, no terminó tras 9+ minutos, probado dos veces). Solución real, no
+    un parche: al ser matemáticamente una unión disjunta de cliques, la partición que maximiza
+    modularidad es exactamente los grupos de `groupby(negocio,rating)` — **verificado
+    empíricamente** corriendo Louvain de verdad sobre `net_rur`/`net_rtr` y comprobando que el
+    número de comunidades encontradas coincide EXACTO con el número de grupos de origen. Se
+    evalúa `net_rsr` con esa partición directa (`groupby_cliques_as_communities`), sin pasar por
+    `networkx`. `net_homo` hereda el mismo muro (97%+ de sus aristas vienen de `net_rsr`); su
+    alternativa barata (`connected_components`, sin pasar por `networkx`, 5,45s) mostró que el
+    99,9% del dataset cae en una sola componente gigante — la unión sin ponderar no sirve de
+    nada aquí, más tajante que en Yelp-Chi (donde al menos no destruía la señal, solo no
+    mejoraba). No se probó la variante ponderada por rareza sobre Yelp-NYC: ya no compensaba en
+    Yelp-Chi (6,3x más lenta sin mejora) y aquí tiene el mismo muro de memoria que `net_rsr`.
+
+  | Relación | Aristas (no dirig.) | LOO-AUC | Precision top-5% | Lift | Comunidades sig. |
+  |---|---|---|---|---|---|
+  | `net_rur` (mismo reviewer) | 1.590.883 | **0,9046** | **0,7519** | **7,32x** | 172 (6,13% fraude) |
+  | `net_rtr` (negocio+rating+semana) | 289.711 | 0,5526 | 0,1838 | 1,79x | 16 (0,53%) |
+  | `net_rsr` (negocio+rating, groupby directo) | ~73.019.336 | 0,6296 | 0,2504 | 2,44x | 75 (10,53%) |
+  | `net_homo` (connected_components) | ~74,6M | 0,0016 | 0,0028 | 0,03x | 1 (0,03%) |
+
+  **`net_rur` sale aún más alto que en Yelp-Chi (0,9046 vs. 0,814), pero por un motivo distinto,
+  diagnosticado a mano**: en Yelp-Chi el patrón era un salto brusco (comunidades de 2-3 reviews
+  casi 100% fraude, grandes 0% fraude); aquí es una curva monótona y suave — 1 review: 22,24% de
+  fraude → 64-199 reviews: 0,66%. Misma implicación que en Yelp-Chi para `profile_cluster.py`:
+  este número mide sobre todo "prolificidad del reviewer" (correlaciona con genuinidad), no
+  "red de cuentas coordinadas" en el sentido que persigue el README — tratar `net_rur` como un
+  indicio de Nivel A separado de `net_rtr`/`net_rsr`, no fundirlos.
+
+- **Burst detection real, por fin posible** (imposible en Yelp-Chi por falta de timestamps):
+  `detect_bursts_yelpnyc()`, z-score semanal de reviews por negocio frente a la tasa base propia
+  de ESE negocio. AUC frente a `is_fake`: **0,5315 (semana) / 0,5272 (día)** — señal débil, casi
+  de azar, documentado sin maquillar (mismo orden que el proxy ya descartado en Yelp-Chi, 0,510).
+
+- **T2 sobre el texto de Yelp-NYC — bloqueado, no una cifra real todavía**: `eval_t2_on_yelpnyc()`
+  ya está escrito en `train.py` (paso CLI `python train.py yelpnyc_t2`, muestreo estratificado
+  1.500/clase, reutiliza la carga de T2 ya existente), pero **no se pudo ejecutar en esta
+  máquina**: `outputs/models/t2_deberta/` no existe aquí (vive solo en el ordenador de casa,
+  gitignored por tamaño). Queda listo para correr la próxima vez que haya sesión con el modelo
+  disponible. Expectativa documentada de antemano, no a posteriori: la etiqueta de Yelp-NYC es
+  engaño **humano** (sin LLM), mismo tipo de tarea que Ott, donde T1/T3 ya salieron a nivel de
+  azar — es razonable esperar que T2 tampoco tenga mucha señal aquí, pero no se asume sin correrlo.
+
+- **Fusión con banda de abstención — parcial, sin T2 no hay nada que fusionar todavía**: el
+  mecanismo (`compute_abstention_thresholds`/`apply_abstention_band`/`fuse_scores`) está escrito
+  y se probó con la única señal real disponible (`net_rur`). **Hallazgo honesto**: con umbrales
+  en percentiles 10/90, la banda "inconcluyente" salió casi vacía (0,34%, 1.208 nodos) porque el
+  score de `net_rur` tiene un pico de masa enorme justo en la tasa base (29,5% de nodos son
+  reviewers de una sola review, todos con el mismo score) — los percentiles cayeron sobre ese
+  empate masivo y la banda no funcionó como se esperaba. Limitación real del mecanismo naive de
+  percentiles frente a distribuciones con empates, documentada, no escondida. Pendiente real:
+  repetir esta evaluación en cuanto T2 esté disponible, que es cuando la fusión tiene sentido de
+  verdad (hoy es solo el grafo solo, banda de abstención sin nada que abstener).
+
+- **`profile_cluster.py` (fichero nuevo)**: Nivel A implementado y probado sobre un cluster real
+  (negocio 826, rating 1, 13 cuentas, 92,31% fraude real, todas de una sola review) —
+  `coreview_synchrony` (2.852x la densidad global), `burst_participation` (débil, z=0,333: las
+  fechas están dispersas 13 meses, no es una ráfaga apretada), `single_review_ratio` (100%).
+  **Hallazgo real encontrado al probar** `density_vs_configuration_model`: es numéricamente
+  inestable/circular a este tamaño de cluster si el grafo de fondo incluye `net_rsr` (el cluster
+  ES un clique de `net_rsr`, comparado contra un fondo que ya contiene ese mismo clique) — un
+  cluster fraudulento y uno benigno de tamaño casi idéntico dieron ratios del mismo orden
+  (~840k-960k), sin discriminar nada. Corregido usando `net_rur ∪ net_rtr` como fondo (sin
+  `net_rsr`), con el aviso dejado explícito en el propio dict de salida, no solo en un comentario.
+  **Nivel B implementado pero marcado `disponible: False`**, tal como exige el README (Yelp-NYC
+  no trae fecha de alta de cuenta) — no se ha inventado ningún proxy para aparentar que sí.
+  Niveles C/D fuera de alcance (Fase 2, necesitan índice de near-duplicates y metadatos que este
+  dataset no trae).
+
+- **Pendiente real, en orden**: (1) correr `python train.py yelpnyc_t2` en cuanto el modelo T2
+  esté disponible en esta máquina o se retome desde el ordenador de casa; (2) repetir la fusión
+  con banda de abstención ya con T2 real; (3) decidir con el usuario si Amazon se usa como
+  segundo dataset de validación de esta misma metodología de clustering.
+
 ## Fuentes de referencia rápida
 
 - Arquitectura completa, roadmap por fases, líneas rojas sobre atribución, y las ideas

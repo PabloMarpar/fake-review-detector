@@ -20,6 +20,7 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, Dataset
 from transformers import AutoModelForSequenceClassification, AutoTokenizer, get_linear_schedule_with_warmup
 
+import data
 from features_text import binoculars_score, get_device, stylometric_features
 
 BASE_DIR = Path(__file__).parent
@@ -447,6 +448,59 @@ def _t2_scores(tokenizer, model, device, texts, batch_size: int = 32) -> np.ndar
     return np.array(scores)
 
 
+def eval_t2_on_yelpnyc(n_per_class: int = 1500) -> None:
+    """Evalúa el T2 ya entrenado (Ott + Claude + Qwen2.5 + Qwen3, ver
+    `train_t2_deberta`) sobre el texto real de Yelp-NYC (Fase 1).
+
+    **Expectativa honesta antes de correrlo, no una sorpresa a posteriori**:
+    T2 fue entrenado para detectar texto GENERADO POR IA (humano vs. LLM).
+    La etiqueta `is_fake` de Yelp-NYC son reviews HUMANAS que Yelp considera
+    engañosas (proxy de spam, ver `data.load_yelpnyc_dataset`) — sin ningún
+    LLM de por medio. Es el mismo tipo de tarea que Ott (humano real vs.
+    humano mintiendo), donde T1 y T3 salieron prácticamente al nivel del
+    azar (ver CONTEXTO.md / README, sección "Resultados de Fase 0"). Es
+    razonable esperar que T2 tenga poca o ninguna señal aquí tampoco — se
+    corre y se documenta el número real que salga, sea alto o bajo, sin
+    ajustar el pipeline para forzar el resultado esperado.
+
+    **Muestreado, no las 359.052 reviews completas**: `deberta-v3-base` en
+    esta máquina es CPU-only — una pasada de inferencia sobre el dataset
+    completo tardaría un orden de horas (referencia real: T1, mucho más
+    ligero que T2, tardaba 2-12s/review en CPU en la Fase 0, de ahí el
+    muestreo de 300/grupo que ya se usó entonces). Aquí se muestrean
+    `n_per_class` reviews por clase (estratificado por `is_fake`), mismo
+    patrón que T1 en Fase 0, no las 359k completas.
+
+    Guarda en `outputs/metrics.json` bajo la clave `t2_yelpnyc`.
+    """
+    df = data.load_yelpnyc_dataset()
+    fake = df[df["is_fake"]]
+    genuine = df[~df["is_fake"]]
+    n_fake = min(n_per_class, len(fake))
+    n_genuine = min(n_per_class, len(genuine))
+    sample = pd.concat(
+        [fake.sample(n_fake, random_state=0), genuine.sample(n_genuine, random_state=0)]
+    ).reset_index(drop=True)
+
+    print(f"Cargando T2 desde {MODELS_DIR / 't2_deberta'} ...")
+    tokenizer, model, device = _load_t2_model()
+    print(f"Evaluando T2 sobre {len(sample)} reviews de Yelp-NYC "
+          f"({n_fake} is_fake=True, {n_genuine} is_fake=False)...")
+    scores = _t2_scores(tokenizer, model, device, sample["text"].tolist())
+    y = sample["is_fake"].astype(int).to_numpy()
+
+    metrics = {
+        "t2_yelpnyc": {
+            "n_fake": int(n_fake),
+            "n_genuine": int(n_genuine),
+            "tpr_at_1pct_fpr": _tpr_at_fpr(y, scores, 0.01),
+            "tpr_at_5pct_fpr": _tpr_at_fpr(y, scores, 0.05),
+        }
+    }
+    _save_metrics(metrics)
+    print(json.dumps(metrics, indent=2))
+
+
 def fuse_signals() -> None:
     """Combina T1 (Binoculars) + T3 (estilometria) + T2 (DeBERTa) con una
     regresion logistica simple. Expectativa honesta antes de medir: como T1
@@ -518,5 +572,7 @@ if __name__ == "__main__":
         evaluate_own_corpus()
     elif step == "fusion":
         fuse_signals()
+    elif step == "yelpnyc_t2":
+        eval_t2_on_yelpnyc()
     else:
-        print(f"Paso desconocido: {step} (usa 't3', 't1', 't2', 'eval_own_corpus' o 'fusion')")
+        print(f"Paso desconocido: {step} (usa 't3', 't1', 't2', 'eval_own_corpus', 'fusion' o 'yelpnyc_t2')")

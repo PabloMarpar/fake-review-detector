@@ -25,6 +25,25 @@ Fuente de grafo (Fase 1):
   para fusionar con la señal de texto T2 ni para Nivel C (near-duplicates de
   texto). Si llega el email de Yelp-NYC/ZIP más adelante, ese sí trae texto y
   habrá que revisar si conviene migrar.
+- Amazon (Dou et al., CIKM 2020 / PC-GNN, WWW 2021), dataset hermano de
+  Yelp-Chi, mismo estilo de preprocesado pero grafo usuario-usuario (fraude
+  en reviews de producto, no de negocio). Copia oficial en el hosting de DGL
+  (proyecto open source de AWS/Amazon), `https://data.dgl.ai/dataset/
+  FraudAmazon.zip` — verificado en esta sesión con una descarga real: 200,
+  `application/zip`, servido por S3/CloudFront, sin cuenta ni email.
+  **Misma limitación que Yelp-Chi, no disimulada**: tampoco trae texto de
+  review, solo grafo + 25 features numéricas + etiqueta.
+- **Yelp-NYC (Rayana & Akoglu, KDD 2015)** — el dataset que sí trae texto +
+  identificadores para construir el grafo reviewer-negocio (a diferencia de
+  Yelp-Chi/Amazon de arriba, que solo dan grafo ya proyectado). La fuente
+  oficial (https://odds.cs.stonybrook.edu/yelpnyc-dataset/) sigue exigiendo
+  pedirlo por email a la autora (ya enviado, sin respuesta todavía) — **esta
+  sesión usa mientras tanto un mirror de Kaggle** (`ahtxham/
+  yelp-nyc-labelled-dataset`), única fuente de esta lista que rompe el patrón
+  "sin cuenta" del resto — necesita `KAGGLE_USERNAME`/`KAGGLE_KEY` en `.env`.
+  Ver docstring de `load_yelpnyc_dataset` para los hallazgos de verificación
+  (cabeceras de columna mal etiquetadas en el mirror, pero datos reales y
+  correctos una vez identificado el mapeo real).
 """
 
 import collections
@@ -35,13 +54,18 @@ from pathlib import Path
 import pandas as pd
 import requests
 import scipy.io
+from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).parent
 RAW_DIR = BASE_DIR / "data_raw"
 
+load_dotenv(BASE_DIR / ".env")
+
 OTT_URL = "https://myleott.com/op_spam_v1.4.zip"
 ORCG_URL = "https://osf.io/download/3vds7/"
 YELPCHI_URL = "https://github.com/YingtongDou/CARE-GNN/raw/master/data/YelpChi.zip"
+AMAZON_URL = "https://data.dgl.ai/dataset/FraudAmazon.zip"
+YELPNYC_KAGGLE_DATASET = "ahtxham/yelp-nyc-labelled-dataset"
 
 OUTPUT_CSV = BASE_DIR / "reviews_baseline.csv"
 
@@ -163,6 +187,148 @@ def load_yelpchi_graph_dataset() -> dict:
     }
 
 
+def load_amazon_graph_dataset() -> dict:
+    """Descarga y carga el grafo de fraude Amazon (Dou et al., CIKM 2020 /
+    PC-GNN WWW 2021), dataset hermano de Yelp-Chi pero con grafo
+    usuario-usuario (fraude en reviews de producto) en vez de review-review.
+
+    Devuelve un dict con:
+    - `net_upu`, `net_usu`, `net_uvu`: matrices sparse binarias
+      (`scipy.sparse.csc_matrix`, valores comprobados: solo `1.0`, sin pesos)
+      de (11.944 x 11.944), tres grafos homogéneos usuario-usuario. Los
+      nombres de clave coinciden exactamente con lo esperado de la
+      literatura (U-P-U, U-S-U, U-V-U); el significado semántico exacto de
+      cada relación (mismo producto / mismo patrón de rating / misma
+      review-voto) se toma de la documentación de CARE-GNN/PC-GNN, no se ha
+      verificado de forma independiente más allá de confirmar claves, forma
+      y que son binarias.
+    - `net_homo`: matriz sparse adicional bajo la clave `homo`, misma forma
+      (11.944 x 11.944). **Hallazgo distinto al de Yelp-Chi, no disimulado**:
+      aquí `homo` NO es la unión booleana exacta de `net_upu`/`net_usu`/
+      `net_uvu` — comprobado en esta sesión que hay 2.048.630 aristas en la
+      unión que no están en `homo`, y 2.010.262 aristas en `homo` que no
+      están en la unión de las tres (de un total de ~8,8M aristas cada una).
+      En Yelp-Chi `homo` sí era exactamente esa unión; en Amazon no se ha
+      identificado qué combinación exacta produce `homo` (no es la unión
+      simple, ni coincide con ninguna de las tres por separado) — se expone
+      tal cual, sin asumir que sea equivalente a construirla a mano.
+    - `features`: matriz sparse (11.944 x 25) de features numéricas ya
+      calculadas por los autores de CARE-GNN/PC-GNN (no propias de este
+      proyecto). **25 dimensiones, no 32 como Yelp-Chi** (confirmado).
+      **A diferencia de Yelp-Chi, aquí NO están normalizadas a [0, 1]**:
+      comprobado min=-1.0, max=5525.0, y 16 de las 25 columnas superan 1.0 —
+      quien use estas features junto a las de Yelp-Chi en el mismo pipeline
+      necesita normalizar antes, no asumir la misma escala.
+    - `label`: array 1D de longitud 11.944, `0` = genuina, `1` = fraudulenta
+      (en el `.mat` viene como fila `(1, 11944)`, se aplana con
+      `.reshape(-1)` igual que en Yelp-Chi). Distribución real comprobada:
+      11.123 genuinas / 821 fraude (6,9% positivos). **A diferencia de
+      Yelp-Chi (que tenía 45.954 nodos frente a los ~67.395 publicados), aquí
+      el conteo de 11.944 nodos / 821 fraudsters (~6,9%) sí coincide con lo
+      que reporta habitualmente la literatura sobre este dataset** — no hay
+      discrepancia de tamaño que documentar en este caso.
+
+    Sin texto de review, igual que Yelp-Chi: solo grafo + features + etiqueta.
+    Sirve para Nivel A del perfilado (estructural), no para fusión con T2 ni
+    Nivel C (near-duplicates de texto).
+    """
+    zip_path = _download(AMAZON_URL, RAW_DIR / "FraudAmazon.zip")
+    mat_path = RAW_DIR / "Amazon.mat"
+    if not mat_path.exists():
+        with zipfile.ZipFile(zip_path) as zf:
+            zf.extract("Amazon.mat", RAW_DIR)
+
+    # Comprobado en esta sesión: igual que YelpChi.mat, es MATLAB 5.0 clásico
+    # (cabecera "MATLAB 5.0 MAT-file"), no v7.3/HDF5 — `scipy.io.loadmat`
+    # funciona directamente, no hace falta `h5py`.
+    mat = scipy.io.loadmat(mat_path)
+
+    return {
+        "net_upu": mat["net_upu"],
+        "net_usu": mat["net_usu"],
+        "net_uvu": mat["net_uvu"],
+        "net_homo": mat["homo"],
+        "features": mat["features"],
+        "label": mat["label"].reshape(-1),
+    }
+
+
+def load_yelpnyc_dataset() -> pd.DataFrame:
+    """Descarga (vía API de Kaggle) y carga Yelp-NYC (Rayana & Akoglu, KDD
+    2015) con texto de review + identificadores de reviewer/negocio, para
+    poder construir el grafo bipartito reviewer-negocio en
+    `features_graph.py` Y correr las señales de texto (T1/T2/T3) sobre el
+    mismo dato — a diferencia de Yelp-Chi/Amazon, que solo dan el grafo ya
+    proyectado sin texto.
+
+    Requiere `KAGGLE_USERNAME` y `KAGGLE_KEY` en `.env` (única fuente de
+    `data.py` que necesita cuenta; ver docstring del módulo). Usa la API de
+    Kaggle (`kaggle.api.dataset_download_files`), no el CLI.
+
+    **Hallazgo real de esta sesión — las cabeceras de columna del mirror de
+    Kaggle están mal etiquetadas, pero el dato subyacente es correcto una vez
+    identificado el mapeo real.** El mirror declara:
+    - `Yelp NYC Metadata.csv`: columnas `Product_id, Product_id2, Rating,
+      Label, Date` — pero `Product_id` tiene 160.225 valores únicos y
+      `Product_id2` solo 923, justo al revés de lo que dicen sus nombres
+      (923 negocios / 160.225 reviewers es la cifra publicada del paper
+      original). `Product_id` es en realidad el id de reviewer y
+      `Product_id2` el id de negocio.
+    - `yelp.csv`: columnas `Review_id, Product_id, Date, Review` — mismo
+      problema, `Review_id` es el id de reviewer (mismo rango que el
+      `Product_id` mal llamado así en el otro fichero) y `Product_id` aquí sí
+      es el id de negocio.
+    - **Verificado con un join real, no solo por rango de valores**: al
+      renombrar con esta hipótesis y cruzar ambos ficheros por
+      (reviewer_id, business_id, date), los 359.052 registros de metadata
+      encajan 1:1 con los 359.052 de `yelp.csv` sin ninguno huérfano — si el
+      mapeo estuviera mal, el cruce no habría dado 100% de coincidencia.
+    - **Cifras finales, coinciden con lo publicado por Rayana & Akoglu**
+      (a diferencia de Yelp-Chi, donde el `.mat` de CARE-GNN no cuadraba con
+      el paper): 923 negocios, 160.225 reviewers, 359.052 reviews. Label -1 =
+      filtered (proxy de fake, 36.885 filas, 10,3%) / 1 = recommended (proxy
+      de genuina, 322.167 filas, 89,7%) — el 10,3% de filtered cuadra con la
+      tasa que reporta la literatura para Yelp-NYC.
+    - Texto sin nulos ni mojibake tras el cruce completo; 896 duplicados
+      exactos de texto (0,25%), **no eliminados aquí a propósito** — a
+      diferencia de Ott/Salminen en `build_baseline_dataset`, quitar
+      duplicados de texto aquí borraría aristas reviewer-negocio reales del
+      grafo, no solo texto redundante.
+
+    Devuelve un DataFrame con: `reviewer_id`, `business_id`, `rating`,
+    `is_fake` (bool, `label == -1`), `date`, `text`, `source_dataset` fijo a
+    `"yelpnyc_rayana_akoglu"`. Sin columna `generator` (no aplica: estas son
+    reviews humanas reales, con o sin intención de engañar, no generadas por
+    ningún modelo).
+    """
+    import kaggle
+
+    dest_dir = RAW_DIR / "yelpnyc_kaggle"
+    meta_path = dest_dir / "Yelp NYC Metadata.csv"
+    text_path = dest_dir / "yelp.csv"
+    if not meta_path.exists() or not text_path.exists():
+        kaggle.api.authenticate()
+        kaggle.api.dataset_download_files(YELPNYC_KAGGLE_DATASET, path=dest_dir, unzip=True)
+
+    meta = pd.read_csv(meta_path)
+    meta.columns = ["reviewer_id", "business_id", "rating", "label", "date"]
+    text = pd.read_csv(text_path)
+    text.columns = ["reviewer_id", "business_id", "date", "text"]
+
+    merged = meta.merge(text, on=["reviewer_id", "business_id", "date"], how="inner")
+    return pd.DataFrame(
+        {
+            "reviewer_id": merged["reviewer_id"],
+            "business_id": merged["business_id"],
+            "rating": merged["rating"],
+            "is_fake": merged["label"] == -1,
+            "date": merged["date"],
+            "text": merged["text"],
+            "source_dataset": "yelpnyc_rayana_akoglu",
+        }
+    )
+
+
 def build_baseline_dataset() -> pd.DataFrame:
     ott = load_ott_corpus()
     orcg = load_orcg_dataset()
@@ -195,3 +361,24 @@ if __name__ == "__main__":
     print(f"net_rsr: {yelpchi['net_rsr'].shape}, {yelpchi['net_rsr'].nnz} aristas no-cero")
     print(f"net_homo (unión de las tres): {yelpchi['net_homo'].shape}, {yelpchi['net_homo'].nnz} aristas no-cero")
     print(f"features: {yelpchi['features'].shape} (32 features numéricas de CARE-GNN, no propias)")
+
+    print("\n--- Amazon (grafo, Fase 1) ---")
+    amazon = load_amazon_graph_dataset()
+    n_nodes = amazon["label"].shape[0]
+    n_fraud = int((amazon["label"] == 1).sum())
+    n_genuine = int((amazon["label"] == 0).sum())
+    print(f"Nodos/usuarios: {n_nodes} (coincide con lo publicado, a diferencia de Yelp-Chi)")
+    print(f"Genuinas: {n_genuine} ({n_genuine / n_nodes:.1%}) | "
+          f"Fraude: {n_fraud} ({n_fraud / n_nodes:.1%})")
+    print(f"net_upu: {amazon['net_upu'].shape}, {amazon['net_upu'].nnz} aristas no-cero")
+    print(f"net_usu: {amazon['net_usu'].shape}, {amazon['net_usu'].nnz} aristas no-cero")
+    print(f"net_uvu: {amazon['net_uvu'].shape}, {amazon['net_uvu'].nnz} aristas no-cero")
+    print(f"net_homo (NO es la unión exacta de las tres, ver docstring): {amazon['net_homo'].shape}, {amazon['net_homo'].nnz} aristas no-cero")
+    print(f"features: {amazon['features'].shape} (25 features numéricas, NO normalizadas a [0,1], ver docstring)")
+
+    print("\n--- Yelp-NYC (texto + grafo, Fase 1) ---")
+    yelpnyc = load_yelpnyc_dataset()
+    print(f"Filas: {len(yelpnyc)} (publicado: 359.052)")
+    print(f"Negocios: {yelpnyc['business_id'].nunique()} (publicado: 923) | "
+          f"Reviewers: {yelpnyc['reviewer_id'].nunique()} (publicado: 160.225)")
+    print(yelpnyc["is_fake"].value_counts(normalize=True))
